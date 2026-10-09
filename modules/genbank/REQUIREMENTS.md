@@ -22,3 +22,8 @@ g2t 版本：v0.01（包内 0.0.1，2026-10-08，GitHub release deyuanyang92-dev
 | 16 | 矩阵增加统一凭证号列（保留 GenBank 原样写法） | 用户 2026-10-09 | ✅ voucher_standardized / voucher_as_submitted / voucher_note（g2t organize + yzz 03） |
 | 17 | 按 accession 或凭证号更新元数据（经纬度、物种名、出版物等），得到校正后矩阵 | 用户 2026-10-09 | ✅ g2t-curate；yzz genbank 04（模板 → 校正 → curated Excel + 修改记录） |
 | 18 | NCBI 矩阵 Excel A + 用户自己整理的 Excel B（任意列名）→ 修正 A 中错误 → 新 Excel C | 用户 2026-10-09 | ✅ g2t-curate -m A -u B -o C（自动识别列，`--map` 覆盖）；yzz genbank 04 --table B 或把 B 放进 curation/ |
+| 25 | 下载太慢（Polynoidae 6110 条 → 6.7 GB/2 批，约 1 h/批）：查明并修复 | 用户 2026-10-09 | ✅ 原因：267 条 >100 kb 染色体/基因组 scaffold（单批 5.8 GB）。默认跳过 >100 kb（`--include-large` 保留），批 6 s，全类群约 3 min |
+| 26 | 再次下载时跳过已下载数据；新数据合并进之前的整理，避免重复下载 | 用户 2026-10-09 | ✅ g2t `recstore`：记录按 accession.version 存共享库 `cache/genbank/nuccore_records.sqlite`，只下载库中没有的；换选择/重叠类群复用；旧版批文件自动导入；`gb/<tag>/changes.tsv` + `changes_history.tsv` 记录新增/更新/撤下（筛选条件变化单独标注）；并行请求 `-w 3`。Polynoidae 重跑：5858 条全部复用、0 下载 |
+| 27 | 避免下载全基因组数据，但长度上限会误伤大线粒体基因组（>40 kb） | 用户 2026-10-09 | ✅ 长度上限只作用于核记录，细胞器记录不限长度；`--mitogenome` 去掉 30 kb 上限并收录 DToL “genome assembly, organelle: mitochondrion”（Polynoidae 18 → 31，Annelida 634 → 733）；失败批次二分定位单条记录 |
+| 28 | 大数据量下载提速 | 用户 2026-10-09 | ✅ gzip 传输（7.7×小）、每请求 500 条（吞吐 2.5×）、60 s 超时快速重试、失败批二分、统计检索只在 --dry-run/--report；Nereididae 17,403 条从零 193 s（下载 69 s），全复用重跑 37–100 s |
+| 29 | 根据 NCBI 时间信息增量下载；不用本地库也能只补缺（追踪下载时间） | 用户 2026-10-10 | ✅ `--since auto|日期`（Entrez [MDAT]，上次日期往前 3 天；撤下记录需不带 --since 的完整核对，manifest 记 last_full_check）；`--no-store`（批文件即唯一副本）。Polynoidae：since 21 s、46 条候选，结果与完整清单一致 |

@@ -15,7 +15,7 @@ python3 yzz.py genbank all Priapulidae --all                 # 全部 (含 WGS/m
 
 | 步骤 | 输入 → 输出 | 说明 |
 |---|---|---|
-| 01_download | 调用 `g2t.download`；类群名 → `02_原始数据/genbank/gb/<tag>/batch_NNNN.gb` + `accessions.tsv` + `manifest.json` | 检索式、类群构成 (WGS/mRNA/RefSeq/线粒体) 与按基因条数写入 manifest；按 accession 分批 efetch，校验条数，指数退避重试，重跑即续传 |
+| 01_download | 调用 `g2t.download`；类群名 → `02_原始数据/genbank/gb/<tag>/batch_NNNN.gb` + `accessions.tsv` + `manifest.json` | 检索式、类群构成 (WGS/mRNA/RefSeq/线粒体) 与按基因条数写入 manifest；默认跳过 >100 kb 记录（`--include-large`）；记录按 accession.version 存共享库 `cache/genbank/nuccore_records.sqlite`，只下载库中没有的（重跑、换选择、重叠类群都复用，旧批文件自动导入）；`gb/<tag>/changes.tsv` / `changes_history.tsv` 记录新增/更新/撤下；并行 `-w 3`，校验条数，指数退避重试 |
 | 02_g2t | gb/<tag> → `g2t/<tag>/`（g2t 原样输出） | 提取元数据 → 基因类型 → 凭证号 → **凭证号核对 (3b)** → 矩阵；`--min-confidence high` 只按强证据合并，`--no-reconcile` 关闭 |
 | 03_export | g2t/<tag> → `04_处理数据/genbank/<Taxon>_GenBank_<tag>_<date>.xlsx`；`02_原始数据/genbank/fasta/<tag>/<gene>.fasta` | 只读 g2t 结果；导出 Matrix / Species x gene / Records / Voucher reconciliation / Not classified / QC / Query |
 
