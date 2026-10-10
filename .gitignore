@@ -10,6 +10,7 @@ temp_scripts/
 
 # local credentials
 config/ncbi.json
+config/mitoz.json
 
 # python / tooling
 __pycache__/

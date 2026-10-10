@@ -27,7 +27,7 @@ yzz-分类工作流/
 │   ├── characters/     ⏳ 性状比较表
 │   ├── keys/           ⏳ 检索表
 │   ├── maps/           ⏳ 分布图、模式产地图
-│   ├── genbank/        ✅ NCBI 下载 → g2t → 多基因表 + FASTA（01–03）
+│   ├── genbank/        ✅ NCBI 下载 → g2t → 多基因表 + FASTA（01–04）；05 线粒体记录 MitoZ 全部重新注释
 │   └── phylogeny/      ⏳ 序列 → 矩阵 → 建树
 ├── projects/<Taxon>/   每个类群一个项目（00–10 编号模板，同臭海蛹项目）
 │   ├── 02_原始数据/<module>/*.tsv   数据本体（机器读写）
@@ -67,6 +67,7 @@ git clone https://github.com/deyuanyang92-dev/gb2taxonomy.git vendor/gb2taxonomy
 pip install -e vendor/gb2taxonomy
 cp config/ncbi.example.json config/ncbi.json   # 可选：填 NCBI 邮箱 / API key（已被 .gitignore 忽略）
 python3 yzz.py worms all <Taxon>
+git clone https://github.com/deyuanyang92-dev/Temp_scripts.git temp_scripts   # genbank 05 用 Mitoz-annotate/batch_mitoz.py
 ```
 
 `cache/`、`projects/`、`outputs/`、`archive/` 为运行产物与历史数据，不入库；`temp_scripts/` 见 GitHub `deyuanyang92-dev/Temp_scripts`。
