@@ -31,7 +31,7 @@ CONFIG = ROOT / "config" / "mitoz.json"
 
 
 def mitoz_location(a):
-    """命令行 > config/mitoz.json > PATH 上的 mitoz; 都没有返回 []."""
+    """命令行 > config/mitoz.json > PATH 上的 mitoz > 自动扫描 conda 环境; 都没有返回 []."""
     if a.conda_env_mitoz:
         return ["--conda_env_mitoz", a.conda_env_mitoz]
     if a.mitoz_path:
@@ -41,7 +41,12 @@ def mitoz_location(a):
         return ["--conda_env_mitoz", cfg["conda_env_mitoz"]]
     if cfg.get("mitoz_path"):
         return ["--mitoz_path", cfg["mitoz_path"]]
-    return ["--mitoz_path", shutil.which("mitoz")] if shutil.which("mitoz") else []
+    if shutil.which("mitoz"):
+        return ["--mitoz_path", shutil.which("mitoz")]
+    sys.path.insert(0, str(SCRIPT.parent))
+    import mito_env                                    # conda / mamba environments scanned automatically
+    env = mito_env.mitoz_env() if SCRIPT.exists() else None
+    return ["--conda_env_mitoz", env] if env else []
 
 
 def passthrough(rest):
@@ -88,7 +93,7 @@ def main(argv):
         return 0
     loc = mitoz_location(a)
     if not loc:
-        summary("05_mitoz", ["跳过: 未找到 MitoZ; 用 --conda_env_mitoz <env> / --mitoz_path <path> 或写 config/mitoz.json"])
+        summary("05_mitoz", ["跳过: 未找到 MitoZ; 一键安装: python3 yzz.py mito setup (体检: python3 yzz.py mito doctor)"])
         return 0
     if not SCRIPT.exists():
         raise SystemExit(f"缺少 {SCRIPT}: git clone https://github.com/deyuanyang92-dev/Temp_scripts.git temp_scripts")

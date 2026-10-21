@@ -51,7 +51,9 @@ try:
                  record("XX000003.1", "Perinereis nuntia", False, "AACGTT" * 200)], gb / "batch_0001.gb", "genbank")
 
     if not shutil.which("mitoz") and not (ROOT / "config" / "mitoz.json").exists():
+        os.environ["YZZ_MITO_NO_SCAN"] = "1"           # no automatic conda scan: simulate a machine without MitoZ
         r = run05()
+        del os.environ["YZZ_MITO_NO_SCAN"]
         check("no MitoZ -> skipped, exit 0", r.returncode == 0 and "跳过" in r.stdout and "MitoZ" in r.stdout)
 
     tmp = Path(tempfile.mkdtemp())
