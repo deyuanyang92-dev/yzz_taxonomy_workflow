@@ -1,4 +1,4 @@
-"""05 MitoZ 重新注释: 调用 batch_mitoz.py run (temp_scripts/Mitoz-annotate, GitHub deyuanyang92-dev/Temp_scripts),
+"""05 MitoZ 重新注释: 调用 batch_mitoz.py run (temp_scripts/Mitoz-annotate, GitHub deyuanyang92-dev/Mitom),
 把下载的线粒体记录全部用 MitoZ 重新注释, 统一 NCBI 注释不一致 / 注释缺失. 原始 .gb 不改.
 
 输入: 02_原始数据/genbank/gb/<tag>/*.gb   (不给 --tag 时处理名为 mito* 的 tag: mito、mitogenome)
@@ -96,7 +96,7 @@ def main(argv):
         summary("05_mitoz", ["跳过: 未找到 MitoZ; 一键安装: python3 yzz.py mito setup (体检: python3 yzz.py mito doctor)"])
         return 0
     if not SCRIPT.exists():
-        raise SystemExit(f"缺少 {SCRIPT}: git clone https://github.com/deyuanyang92-dev/Temp_scripts.git temp_scripts")
+        raise SystemExit(f"缺少 {SCRIPT}: git clone https://github.com/deyuanyang92-dev/Mitom.git temp_scripts/Mitoz-annotate")
     rest = passthrough(rest)
     cfg = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
     if cfg.get("intron_bin") and "--intron_bin" not in rest:

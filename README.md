@@ -67,6 +67,7 @@ git clone https://github.com/deyuanyang92-dev/gb2taxonomy.git vendor/gb2taxonomy
 pip install -e vendor/gb2taxonomy
 cp config/ncbi.example.json config/ncbi.json   # 可选：填 NCBI 邮箱 / API key（已被 .gitignore 忽略）
 python3 yzz.py worms all <Taxon>
+git clone https://github.com/deyuanyang92-dev/Mitom.git temp_scripts/Mitoz-annotate   # genbank 05 用 MitoM（mitom run）
 git clone https://github.com/deyuanyang92-dev/Temp_scripts.git temp_scripts   # genbank 05 用 Mitoz-annotate/batch_mitoz.py
 ```
 
