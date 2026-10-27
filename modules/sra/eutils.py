@@ -1,0 +1,116 @@
+"""NCBI E-utilities 的极简 HTTP 客户端 (不依赖 edirect).
+
+- 身份: 环境变量 NCBI_EMAIL / NCBI_API_KEY 优先, 其次 config/ncbi.json; key 不打印.
+- 限速: 有 key 0.11 s/次, 无 key 0.35 s/次.
+- 失败: HTTP 错误、HTML 错误页、JSON "error"、XML <ERROR> 都算失败, 指数退避重试, 仍失败抛 EutilsError.
+- transport 可注入 (测试用): callable(url) -> str.
+"""
+import json
+import os
+import time
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+
+
+class EutilsError(RuntimeError):
+    pass
+
+
+def load_identity(root):
+    cfg = {}
+    f = Path(root) / "config" / "ncbi.json"
+    if f.exists():
+        cfg = json.loads(f.read_text(encoding="utf-8"))
+    email = os.environ.get("NCBI_EMAIL") or cfg.get("email") or None
+    key = os.environ.get("NCBI_API_KEY") or cfg.get("api_key") or None
+    return email, key
+
+
+def _urlopen(url):
+    with urllib.request.urlopen(url, timeout=180) as r:
+        return r.read().decode("utf-8", errors="replace")
+
+
+def _error_in(body):
+    s = body.lstrip()
+    if s[:15].upper().startswith("<!DOCTYPE HTML") or s[:5].lower() == "<html":
+        return "HTML error page"
+    if "<ERROR>" in s[:3000]:
+        return s[s.find("<ERROR>"):][:200]
+    if s.startswith("{"):
+        try:
+            j = json.loads(s)
+        except ValueError:
+            return "invalid JSON"
+        if "error" in j:
+            return str(j["error"])[:200]
+        if isinstance(j.get("esearchresult"), dict) and j["esearchresult"].get("ERROR"):
+            return str(j["esearchresult"]["ERROR"])[:200]
+    return None
+
+
+class Eutils:
+    def __init__(self, email=None, api_key=None, transport=None, retries=5, sleep=time.sleep):
+        self.email, self.api_key = email, api_key
+        self.transport = transport or _urlopen
+        self.retries, self.sleep = retries, sleep
+        self.gap = 0.11 if api_key else 0.35
+
+    def get(self, endpoint, params):
+        p = {k: v for k, v in params.items() if v not in (None, "")}
+        p["tool"] = "yzz-sra"
+        if self.email:
+            p["email"] = self.email
+        if self.api_key:
+            p["api_key"] = self.api_key
+        url = BASE + endpoint + "?" + urllib.parse.urlencode(p)
+        last = None
+        for i in range(self.retries):
+            self.sleep(self.gap)
+            try:
+                body = self.transport(url)
+                err = _error_in(body)
+                if err is None:
+                    return body
+                last = err
+            except Exception as e:  # network / HTTP status
+                last = f"{type(e).__name__}: {e}"
+            if i < self.retries - 1:
+                self.sleep(2 ** i)
+        raise EutilsError(f"{endpoint} 失败 {self.retries} 次: {last}")
+
+    def esearch(self, db, term, retmax=0):
+        body = self.get("esearch.fcgi", {"db": db, "term": term, "usehistory": "y",
+                                         "retmax": retmax, "retmode": "json"})
+        r = json.loads(body)["esearchresult"]
+        return {"count": int(r.get("count", 0)), "webenv": r.get("webenv", ""),
+                "query_key": r.get("querykey", ""), "ids": r.get("idlist", [])}
+
+    def efetch_history(self, db, webenv, query_key, count, rettype="", retmode="xml", page=500):
+        for start in range(0, count, page):
+            yield self.get("efetch.fcgi", {"db": db, "WebEnv": webenv, "query_key": query_key,
+                                           "retstart": start, "retmax": page,
+                                           "rettype": rettype, "retmode": retmode})
+
+    def efetch_ids(self, db, ids, rettype="", retmode="xml"):
+        return self.get("efetch.fcgi", {"db": db, "id": ",".join(ids), "rettype": rettype, "retmode": retmode})
+
+
+def resolve_taxid(eu, name):
+    """类群名 -> NCBI taxid; 纯数字原样返回; 找不到或多个同名时报错并列出候选."""
+    from defusedxml import ElementTree as ET
+    name = name.strip()
+    if name.isdigit():
+        return name
+    r = eu.esearch("taxonomy", f'"{name}"[Scientific Name]', retmax=20)
+    if r["count"] == 0:
+        raise EutilsError(f"NCBI Taxonomy 未找到类群 {name!r}; 检查拼写或用 --taxid 指定")
+    if r["count"] == 1 and len(r["ids"]) == 1:
+        return r["ids"][0]
+    root = ET.fromstring(eu.efetch_ids("taxonomy", r["ids"]))
+    lines = [f"  {t.findtext('TaxId')}  {t.findtext('ScientificName')}  ({t.findtext('Lineage', '')[-80:]})"
+             for t in root.findall("Taxon")]
+    raise EutilsError(f"类群名 {name!r} 在 NCBI 有 {r['count']} 个同名, 请用 --taxid 指定:\n" + "\n".join(lines))
