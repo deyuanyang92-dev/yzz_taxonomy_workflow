@@ -144,3 +144,48 @@ def test_truncated_xml_is_retried():
     eu, t = fake_eutils([("efetch", flaky("<EXPERIMENT_PACKAGE_SET><EXPERIMENT_PACK", "<EXPERIMENT_PACKAGE_SET/>"))])
     pages = list(eu.efetch_history("sra", "W", "1", 1, retmode="xml"))
     assert pages == ["<EXPERIMENT_PACKAGE_SET/>"] and len(t.urls) == 2
+
+
+# --- final-review fixes ---
+
+def test_empty_runinfo_page_is_retried():
+    eu, t = fake_eutils([("efetch", flaky("", RUNINFO))])
+    pages = list(eu.efetch_history("sra", "W", "1", 1, rettype="runinfo", retmode="text"))
+    assert pages == [RUNINFO] and len(t.urls) == 2
+
+
+def test_truncated_runinfo_page_is_retried():
+    cut = RUNINFO[:RUNINFO.index("SRR2") + 30]
+    eu, t = fake_eutils([("efetch", flaky(cut, RUNINFO))])
+    assert list(eu.efetch_history("sra", "W", "1", 1, rettype="runinfo", retmode="text")) == [RUNINFO]
+
+
+def test_runs_mode_checks_experiment_count(project, tmp_path):
+    lst = tmp_path / "runs.txt"
+    lst.write_text("SRR1\nSRR3\n")
+    rc, _ = run01([TAXON, "--runs", str(lst)], [("esearch", esearch_json(5)), ("efetch", RUNINFO)])
+    assert rc == 1 and any("Experiment" in p for p in manifest(project)["problems"])
+
+
+def test_runs_case_and_invalid(project, tmp_path):
+    lst = tmp_path / "runs.txt"
+    lst.write_text("srr1\nSRR2,SRR3\nSRX99\n")
+    rc, t = run01([TAXON, "--runs", str(lst)], [("esearch", esearch_json(2)), ("efetch", RUNINFO)])
+    assert rc == 0
+    assert (project / "02_原始数据" / "sra" / "runs_not_found.txt").read_text().split() == ["SRX99"]
+    assert b"SRX99" not in (t.posts[0] or t.urls[0].encode())
+
+
+def test_runinfo_file_without_required_columns(project, tmp_path):
+    f = tmp_path / "x.csv"
+    f.write_text("Run;LibraryStrategy\nSRR1;WGS\n")
+    rc, _ = run01([TAXON, "--runinfo", str(f)], [])
+    assert rc == 1
+
+
+def test_runs_not_found_cleared_in_other_modes(project, tmp_path):
+    d = project / "02_原始数据" / "sra"
+    d.mkdir(parents=True)
+    (d / "runs_not_found.txt").write_text("SRR_OLD\n")
+    run01([TAXON, "--runinfo", str(FIX / "runinfo.csv")], [])
+    assert (d / "runs_not_found.txt").read_text() == ""

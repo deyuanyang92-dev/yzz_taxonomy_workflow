@@ -10,6 +10,7 @@
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from eutils import Eutils, EutilsError, load_identity, resolve_taxid  # noqa: E4
 from parse import parse_runinfo  # noqa: E402
 
 BATCH = 200
+REQUIRED = ["Run", "LibraryStrategy", "bases", "TaxID"]
+ACC = re.compile(r"^[SED]RR\d+$")
 
 
 def fetch(eu, term):
@@ -33,12 +36,14 @@ def fetch(eu, term):
 
 
 def read_runs(path):
-    seen = []
-    for line in Path(path).read_text(encoding="utf-8-sig").split():
-        acc = line.strip()
-        if acc and acc not in seen:
-            seen.append(acc)
-    return seen
+    """-> (合法 run 号, 非法条目); 空白/逗号分隔, 转大写, 去重保序."""
+    seen, bad = [], []
+    for acc in re.split(r"[\s,;]+", Path(path).read_text(encoding="utf-8-sig")):
+        acc = acc.strip().upper()
+        if not acc or acc in seen or acc in bad:
+            continue
+        (seen if ACC.match(acc) else bad).append(acc)
+    return seen, bad
 
 
 def main(argv, eutils=None):
@@ -54,24 +59,36 @@ def main(argv, eutils=None):
     out = data_dir(a.taxon, "sra")
     m = {"taxon": a.taxon, "date": TODAY, "taxid": "", "term": "", "esearch_count": None,
          "not_found": 0, "problems": []}
+    hard = []                                       # 使结果不可信的问题 -> ok=false, 退出码 1
+    (out / "runs_not_found.txt").write_text("")     # 清掉上次 --runs 留下的清单
     try:
         if a.runinfo:
             m["mode"] = "runinfo"
             rows = parse_runinfo(Path(a.runinfo).read_text(encoding="utf-8-sig", errors="replace"))
+            lack = [c for c in REQUIRED if not rows or c not in rows[0]]
+            if lack:
+                print(f"[01_runinfo] {a.runinfo} 不是 NCBI SraRunInfo 表 (0 行或缺列 {', '.join(lack)}); "
+                      "请用网页 Send to → File → RunInfo 导出的 csv")
+                return 1
         elif a.runs:
             m["mode"] = "runs"
-            want = read_runs(a.runs)
+            want, bad = read_runs(a.runs)
             rows, total = [], 0
             for i in range(0, len(want), BATCH):
                 n, got = fetch(eu, " OR ".join(f"{x}[accn]" for x in want[i:i + BATCH]))
+                if len({r["Experiment"] for r in got}) != n:
+                    hard.append(f"批次 {i // BATCH + 1}: 唯一 Experiment {len({r['Experiment'] for r in got})} "
+                                f"!= esearch Count {n}")
                 total += n
                 rows += got
-            rows = [r for r in rows if r["Run"] in set(want)]
-            missing = [x for x in want if x not in {r["Run"] for r in rows}]
+            wanted = set(want)
+            rows = [r for r in rows if r["Run"] in wanted]
+            got_runs = {r["Run"] for r in rows}
+            missing = [x for x in want if x not in got_runs] + bad
             m["esearch_count"], m["not_found"] = total, len(missing)
             (out / "runs_not_found.txt").write_text("".join(x + "\n" for x in missing))
             if missing:
-                m["problems"].append(f"{len(missing)} 个 run 在 NCBI SRA 查不到, 见 runs_not_found.txt")
+                m["problems"].append(f"{len(missing)} 个 run 查不到或不是 SRR/ERR/DRR 号, 见 runs_not_found.txt")
         else:
             m["mode"] = "taxon"
             m["taxid"] = a.taxid or resolve_taxid(eu, a.taxon)
@@ -93,8 +110,9 @@ def main(argv, eutils=None):
     m["experiments"] = int(df["Experiment"].nunique()) if "Experiment" in df else 0
     m["empty_bioproject"] = int((df.get("BioProject", pd.Series(dtype=str)).fillna("") == "").sum())
     if m["mode"] == "taxon" and m["experiments"] != m["esearch_count"]:
-        m["problems"].append(f"唯一 Experiment {m['experiments']} != esearch Count {m['esearch_count']}")
-    m["ok"] = not (m["mode"] == "taxon" and m["problems"])
+        hard.append(f"唯一 Experiment {m['experiments']} != esearch Count {m['esearch_count']}")
+    m["problems"] = hard + m["problems"]
+    m["ok"] = not hard
     write_tsv(df, out / "runinfo.tsv")
     (out / "manifest.json").write_text(json.dumps(m, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"{m['mode']}: {m['term'] or a.runs or a.runinfo}",

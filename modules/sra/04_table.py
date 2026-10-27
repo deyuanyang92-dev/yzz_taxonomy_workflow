@@ -64,6 +64,9 @@ def lines_of(path):
 
 def merge(runinfo, annotate, taxonomy):
     t = runinfo.copy()
+    if len(annotate) and len(taxonomy):     # 样本属性与阶元同名 (如 species) -> 属性改名 sample_<名>, 阶元保留原名
+        clash = [c for c in taxonomy.columns if c != "TaxID" and c in annotate.columns]
+        annotate = annotate.rename(columns={c: f"sample_{c}" for c in clash})
     if len(annotate):
         t = t.merge(annotate, on="Run", how="left", suffixes=("", "_annotate"))
     if len(taxonomy):

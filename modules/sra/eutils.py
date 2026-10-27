@@ -41,6 +41,14 @@ def _error_in(body, expect=None):
             json.loads(s)
         except ValueError:
             return "empty or invalid JSON"
+    if expect == "runinfo":
+        import csv
+        import io
+        rows = [r for r in csv.reader(io.StringIO(s.lstrip("\ufeff"))) if r]
+        if not rows or rows[0][0] != "Run":
+            return "empty or invalid RunInfo page"
+        if any(len(r) != len(rows[0]) for r in rows):
+            return "truncated RunInfo page"
     if expect == "xml":
         from defusedxml import ElementTree as ET
         try:
@@ -107,7 +115,7 @@ class Eutils:
             yield self.get("efetch.fcgi", {"db": db, "WebEnv": webenv, "query_key": query_key,
                                            "retstart": start, "retmax": page,
                                            "rettype": rettype, "retmode": retmode},
-                           expect="xml" if retmode == "xml" else None)
+                           expect="xml" if retmode == "xml" else "runinfo" if rettype == "runinfo" else None)
 
     def efetch_ids(self, db, ids, rettype="", retmode="xml"):
         return self.get("efetch.fcgi", {"db": db, "id": ",".join(ids), "rettype": rettype, "retmode": retmode},

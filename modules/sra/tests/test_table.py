@@ -83,3 +83,12 @@ def test_excel_look_kept(project):
     assert ws.freeze_panes == "A2" and ws.auto_filter.ref
     assert ws.cell(row=1, column=1).font.b
     assert 8 <= ws.column_dimensions["A"].width <= 52
+
+
+def test_sample_attribute_named_like_rank_does_not_hide_lineage(project):
+    ann = "Run\tfamily\tspecies\nSRR1\tsubmitter family\tsubmitter species\n"
+    d = setup(project, ROWS, ann, TAX)
+    load_step("04_table").main([TAXON])
+    lines = (d / "table.tsv").read_text(encoding="utf-8").splitlines()
+    r1 = dict(zip(lines[0].split("\t"), lines[1].split("\t")))
+    assert r1["family"] == "F" and r1["sample_family"] == "submitter family"
