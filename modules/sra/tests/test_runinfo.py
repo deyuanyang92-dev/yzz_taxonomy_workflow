@@ -124,3 +124,23 @@ def test_short_query_is_get():
     eu, t = fake_eutils([("esearch", esearch_json(0))])
     eu.esearch("sra", "txid1[Organism:exp]")
     assert t.posts[0] is None and "txid1" in t.urls[0]
+
+
+def flaky(bad, good, n_bad=1):
+    calls = {"n": 0}
+
+    def body(url):
+        calls["n"] += 1
+        return bad if calls["n"] <= n_bad else good
+    return body
+
+
+def test_empty_json_body_is_retried():
+    eu, t = fake_eutils([("esearch", flaky("", esearch_json(7)))])
+    assert eu.esearch("sra", "x")["count"] == 7 and len(t.urls) == 2
+
+
+def test_truncated_xml_is_retried():
+    eu, t = fake_eutils([("efetch", flaky("<EXPERIMENT_PACKAGE_SET><EXPERIMENT_PACK", "<EXPERIMENT_PACKAGE_SET/>"))])
+    pages = list(eu.efetch_history("sra", "W", "1", 1, retmode="xml"))
+    assert pages == ["<EXPERIMENT_PACKAGE_SET/>"] and len(t.urls) == 2

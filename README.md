@@ -11,7 +11,7 @@ python3 yzz.py worms all <Taxon>          # 运行 worms 模块全部步骤
 python3 yzz.py worms 06 <Taxon>           # 只跑某一步；07-09 跑一段
 ```
 
-在 Claude Code 里直接说"整理 Polynoidae 的 WoRMS 数据"即可（skill `yzz-worms`）；"下载 Priapulidae 的 GenBank 并整理多基因表"（skill `yzz-genbank`）。
+在 Claude Code 里直接说"整理 Polynoidae 的 WoRMS 数据"即可（skill `yzz-worms`）；"下载 Priapulidae 的 GenBank 并整理多基因表"（skill `yzz-genbank`）；"盘点 Annelida 在 SRA 的浅层/转录组/全基因组数据"（skill `yzz-sra`）。
 
 ## 结构
 
@@ -28,6 +28,7 @@ yzz-分类工作流/
 │   ├── keys/           ⏳ 检索表
 │   ├── maps/           ⏳ 分布图、模式产地图
 │   ├── genbank/        ✅ NCBI 下载 → g2t → 多基因表 + FASTA（01–04）；05 线粒体记录 MitoZ 全部重新注释
+│   ├── sra/            ✅ SRA metadata 总表：RunInfo + 注释 + 门–种 + 数据类型（浅层/深度 WGS、转录组…）→ Excel + 下载清单（01–05，不下载）
 │   └── phylogeny/      ⏳ 序列 → 矩阵 → 建树
 ├── projects/<Taxon>/   每个类群一个项目（00–10 编号模板，同臭海蛹项目）
 │   ├── 02_原始数据/<module>/*.tsv   数据本体（机器读写）

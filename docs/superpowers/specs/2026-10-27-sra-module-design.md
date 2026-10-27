@@ -42,7 +42,7 @@
 
 NCBI 没有"浅层"字段，按样本数据量推断。按顺序首个命中：
 
-1. WGS 且 LibrarySelection ∈ {PCR, RT-PCR} → `WGS_PCR_suspect`（实测 PRJNA551036：2304 run 单物种、PCR、中位 0.08 Gb）
+1. ~~WGS 且 LibrarySelection ∈ {PCR, RT-PCR} → `WGS_PCR_suspect`~~ **实施时撤销**（2026-10-27 Annelida 实测：1642 条 WGS+PCR run 多为 genome skimming / 基因组数据，PRJNA551036 是单样本医蛭基因组而非扩增子）。改为照常分类、QC 标 `WGS_selection_PCR`。
 2. WGS 且 LibrarySource ∈ {METAGENOMIC, METATRANSCRIPTOMIC} → `WGS_metagenomic`
 3. WGS 且 PacBio/Nanopore → `long_read_WGS`
 4. WGS 短读长，样本总量 < 0.5 Gb → `low_data_WGS`
@@ -51,7 +51,7 @@ NCBI 没有"浅层"字段，按样本数据量推断。按顺序首个命中：
 7. RNA-Seq 且长读长 → `long_read_RNA`
 8. 其余 → LibraryStrategy 原值（RNA-Seq、Hi-C、RAD-Seq、AMPLICON…）
 
-样本总量 = 同一 BioSample（空则用 Run）、同 LibraryStrategy、同平台类型的 run 碱基数之和，不含命中 1–2 的 run。0.5/10 Gb 为设计方初值（依据 Annelida 每样本 1–3 Gb 峰 251 个样本），可改。
+样本总量 = 同一 BioSample（空则用 Run）、同 LibraryStrategy、同平台类型的 run 碱基数之和，不含宏基因组 run。0.5/10 Gb 为设计方初值（依据 Annelida 每样本 1–3 Gb 峰 251 个样本），可改。
 
 ## 6. Excel（`04_处理数据/sra/<Taxon>_SRA_<date>.xlsx`）
 
@@ -59,7 +59,7 @@ NCBI 没有"浅层"字段，按样本数据量推断。按顺序首个命中：
 - `Samples`：一行一个样本×数据类型，含标题、采集地、经纬度、凭证号、run 列表（挑选用）。
 - 每类一张：`shallow_WGS`、`deep_WGS`、`long_read_WGS`、`RNA-Seq`、`Hi-C`、`Other`。
 - `Runs`：全部列（RunInfo + annotate + 阶元 + 派生）。
-- `QC`：PCR 疑似、宏基因组、数据过少、BioProject 为空、查不到的 run、条数核对。
+- `QC`：WGS+PCR 标记、宏基因组、数据过少、BioProject 为空、查不到的 run、条数核对。
 - `Query`：检索式、日期、条数、阈值。
 
 ## 7. 05_select 参数
@@ -86,5 +86,5 @@ NCBI 没有"浅层"字段，按样本数据量推断。按顺序首个命中：
 
 - `python3 yzz.py sra all Polynoidae`：唯一 Experiment = 检索 Count（2026-10-27：495 / 525 run）；Excel 各表生成；`run_list_default.txt` 非空。
 - `--runs <10 个 SRR>`、`--runinfo <网页 csv>` 两种输入跑通。
-- `python3 yzz.py sra all Annelida` < 15 分钟；PRJNA551036 全部归 `WGS_PCR_suspect`。
+- `python3 yzz.py sra all Annelida` < 15 分钟；PRJNA1075478（Annelida Genome Skimming）归 `shallow_WGS`；WGS+PCR 均在 QC 标出。
 - 离线单元测试全部 PASS。

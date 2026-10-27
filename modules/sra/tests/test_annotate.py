@@ -50,3 +50,12 @@ def test_step02_missing_runs_reported(project):
     eu, _ = fake_eutils([("esearch", ESEARCH), ("efetch", XML)])
     assert load_step("02_annotate").main([TAXON], eutils=eu) == 1
     assert (d / "annotate_missing.txt").read_text().split() == ["SRR0000001"]
+
+
+def test_step02_taxon_mode_reuses_term(project):
+    d = write_runinfo(project, ["SRR37048088"])
+    (d / "manifest.json").write_text(json.dumps({"mode": "taxon", "term": "txid46593[Organism:exp]"}))
+    eu, t = fake_eutils([("esearch", ESEARCH), ("efetch", XML)])
+    assert load_step("02_annotate").main([TAXON], eutils=eu) == 0
+    assert "txid46593" in t.urls[0] and "accn" not in t.urls[0]
+    assert "retmax=500" in t.urls[1]

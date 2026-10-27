@@ -57,7 +57,7 @@ def test_excel_sheets(project):
     title = runs.cell(row=2, column=hdr.index("experiment_title") + 1)
     assert title.data_type == "s"                                   # NCBI text never becomes a formula
     qc = [r[0] for r in wb["QC"].iter_rows(min_row=2, values_only=True)]
-    assert "WGS_PCR_suspect" in qc and "empty_BioProject" in qc
+    assert "WGS_selection_PCR" in qc and "empty_BioProject" in qc
     der = runs.cell(row=1, column=hdr.index("category_derived") + 1)
     assert der.fill.fgColor.rgb.endswith("FFF2CC")
 
@@ -74,3 +74,12 @@ def test_requires_inputs(project):
     with pytest.raises(SystemExit) as e:
         load_step("04_table").main([TAXON])
     assert "runinfo.tsv" in str(e.value)
+
+
+def test_excel_look_kept(project):
+    setup(project, ROWS, ANN, TAX)
+    load_step("04_table").main([TAXON])
+    ws = load_workbook(xlsx(project))["Runs"]
+    assert ws.freeze_panes == "A2" and ws.auto_filter.ref
+    assert ws.cell(row=1, column=1).font.b
+    assert 8 <= ws.column_dimensions["A"].width <= 52

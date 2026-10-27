@@ -15,8 +15,11 @@ def cat(*rows):
     return list(classify_runs(pd.DataFrame(list(rows)), R)["category_derived"])
 
 
-def test_rule_pcr():
-    assert cat(run(sel="PCR", gb=0.08)) == ["WGS_PCR_suspect"]
+def test_pcr_selection_classified_by_volume():
+    # Annelida 2026-10-27: WGS+PCR are mostly genome skimming / genome data (PRJNA1075478, PRJNA551036)
+    df = classify_runs(pd.DataFrame([run(sel="PCR", gb=1.84), run(run="R2", bs="S2", sel="PCR", gb=0.08)]), R)
+    assert list(df.category_derived) == ["shallow_WGS", "low_data_WGS"]
+    assert "PCR" in df.category_rule_derived[0]
 
 
 def test_rule_metagenomic():
@@ -33,10 +36,11 @@ def test_thresholds():
     assert cat(*rows) == ["low_data_WGS", "shallow_WGS", "shallow_WGS", "deep_WGS"]
 
 
-def test_sample_sum_excludes_pcr():
-    df = classify_runs(pd.DataFrame([run(run="R1", gb=3), run(run="R2", sel="PCR", gb=20)]), R)
-    r1 = df[df.Run == "R1"].iloc[0]
-    assert r1.category_derived == "shallow_WGS" and r1.sample_total_Gb_derived == 3.0
+def test_sample_sum_includes_pcr_runs_excludes_metagenomic():
+    df = classify_runs(pd.DataFrame([run(run="R1", gb=3), run(run="R2", sel="PCR", gb=20),
+                                     run(run="R3", src="METAGENOMIC", gb=50)]), R)
+    assert list(df.category_derived) == ["deep_WGS", "deep_WGS", "WGS_metagenomic"]
+    assert df.sample_total_Gb_derived[0] == 23.0
 
 
 def test_runs_of_one_sample_are_summed():
@@ -61,7 +65,7 @@ def test_rule_text():
 
 
 def test_case_insensitive():
-    assert cat(run(strategy="wgs", sel="pcr")) == ["WGS_PCR_suspect"]
+    assert cat(run(strategy="wgs", src="metagenomic")) == ["WGS_metagenomic"]
 
 
 def test_summaries():

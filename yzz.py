@@ -5,6 +5,7 @@
   python3 yzz.py <module> all <Taxon>         依次运行模块全部步骤 (如: worms all Polynoidae)
   python3 yzz.py <module> <NN> <Taxon>        只运行某一步 (如: worms 06 Polynoidae)
   python3 yzz.py <module> <NN-MM> <Taxon>     运行一段 (如: worms 07-09 Polynoidae)
+  python3 yzz.py sra all <Taxon> [--runs 列表|--runinfo csv]   SRA metadata 总表 + 数据类型 + 下载清单 (modules/sra)
 
 每步只读上一步的 TSV、只写自己的 TSV, 终端只打印简短摘要; 某步失败可单独重跑.
 """

@@ -34,8 +34,19 @@ def _urlopen(url, data=None):
         return r.read().decode("utf-8", errors="replace")
 
 
-def _error_in(body):
+def _error_in(body, expect=None):
     s = body.lstrip()
+    if expect == "json":
+        try:
+            json.loads(s)
+        except ValueError:
+            return "empty or invalid JSON"
+    if expect == "xml":
+        from defusedxml import ElementTree as ET
+        try:
+            ET.fromstring(s)
+        except Exception as e:  # truncated / empty XML
+            return f"invalid XML: {e}"
     if s[:15].upper().startswith("<!DOCTYPE HTML") or s[:5].lower() == "<html":
         return "HTML error page"
     if "<ERROR>" in s[:3000]:
@@ -59,7 +70,7 @@ class Eutils:
         self.retries, self.sleep = retries, sleep
         self.gap = 0.11 if api_key else 0.35
 
-    def get(self, endpoint, params):
+    def get(self, endpoint, params, expect=None):
         p = {k: v for k, v in params.items() if v not in (None, "")}
         p["tool"] = "yzz-sra"
         if self.email:
@@ -74,7 +85,7 @@ class Eutils:
             self.sleep(self.gap)
             try:
                 body = self.transport(url, data) if data else self.transport(url)
-                err = _error_in(body)
+                err = _error_in(body, expect)
                 if err is None:
                     return body
                 last = err
@@ -86,7 +97,7 @@ class Eutils:
 
     def esearch(self, db, term, retmax=0):
         body = self.get("esearch.fcgi", {"db": db, "term": term, "usehistory": "y",
-                                         "retmax": retmax, "retmode": "json"})
+                                         "retmax": retmax, "retmode": "json"}, expect="json")
         r = json.loads(body)["esearchresult"]
         return {"count": int(r.get("count", 0)), "webenv": r.get("webenv", ""),
                 "query_key": r.get("querykey", ""), "ids": r.get("idlist", [])}
@@ -95,10 +106,12 @@ class Eutils:
         for start in range(0, count, page):
             yield self.get("efetch.fcgi", {"db": db, "WebEnv": webenv, "query_key": query_key,
                                            "retstart": start, "retmax": page,
-                                           "rettype": rettype, "retmode": retmode})
+                                           "rettype": rettype, "retmode": retmode},
+                           expect="xml" if retmode == "xml" else None)
 
     def efetch_ids(self, db, ids, rettype="", retmode="xml"):
-        return self.get("efetch.fcgi", {"db": db, "id": ",".join(ids), "rettype": rettype, "retmode": retmode})
+        return self.get("efetch.fcgi", {"db": db, "id": ",".join(ids), "rettype": rettype, "retmode": retmode},
+                        expect="xml" if retmode == "xml" else None)
 
 
 def resolve_taxid(eu, name):

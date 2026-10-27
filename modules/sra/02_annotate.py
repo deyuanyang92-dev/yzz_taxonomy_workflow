@@ -5,6 +5,7 @@
 XML 中缺失的 run 超过 1% 时退出码 1.
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -26,12 +27,20 @@ def main(argv, eutils=None):
     eu = eutils or Eutils(*load_identity(ROOT))
     d = data_dir(a.taxon, "sra")
     runs = [r for r in read_tsv(d / "runinfo.tsv").get("Run", pd.Series(dtype=str)) if r]
+    mf = d / "manifest.json"
+    manifest = json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {}
     rows = []
     try:
-        for i in range(0, len(runs), BATCH):
-            r = eu.esearch("sra", " OR ".join(f"{x}[accn]" for x in runs[i:i + BATCH]))
-            for page in eu.efetch_history("sra", r["webenv"], r["query_key"], r["count"], page=BATCH):
+        if manifest.get("mode") == "taxon" and manifest.get("term"):
+            # 类群模式: 复用 01 的检索式, 每页 500 (比按 accession 分批快约一倍)
+            r = eu.esearch("sra", manifest["term"])
+            for page in eu.efetch_history("sra", r["webenv"], r["query_key"], r["count"], page=500):
                 rows += parse_sra_packages(page)
+        else:
+            for i in range(0, len(runs), BATCH):
+                r = eu.esearch("sra", " OR ".join(f"{x}[accn]" for x in runs[i:i + BATCH]))
+                for page in eu.efetch_history("sra", r["webenv"], r["query_key"], r["count"], page=BATCH):
+                    rows += parse_sra_packages(page)
     except EutilsError as e:
         print(f"[02_annotate] 失败: {e}")
         return 1
