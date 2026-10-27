@@ -12,3 +12,47 @@ def parse_runinfo(text):
         if run and run != "Run":
             rows.append({k.lstrip("﻿"): (v or "") for k, v in r.items() if k is not None})
     return rows
+
+
+def _text(el, path):
+    x = el.find(path)
+    return (x.text or "").strip() if x is not None and x.text else ""
+
+
+def parse_sra_packages(xml):
+    """efetch db=sra 完整 XML -> 每个 RUN 一行 (仿 kingfisher annotate 字段; 不取联系人姓名/邮箱).
+
+    样本属性 TAG -> 列名 (原样); 无 VALUE 的跳过; 与已有字段重名的加前缀 sample_.
+    """
+    import json
+    from defusedxml import ElementTree as ET
+    rows = []
+    for pkg in ET.fromstring(xml).iter("EXPERIMENT_PACKAGE"):
+        org = pkg.find("Organization")
+        links = []
+        for x in pkg.findall("STUDY/STUDY_LINKS/STUDY_LINK/XREF_LINK"):
+            links.append({"db": _text(x, "DB").lower(), "id": _text(x, "ID")})
+        for x in pkg.findall("STUDY/STUDY_LINKS/STUDY_LINK/URL_LINK"):
+            links.append({"label": _text(x, "LABEL"), "url": _text(x, "URL")})
+        d = {
+            "experiment_title": _text(pkg, "EXPERIMENT/TITLE"),
+            "design_description": _text(pkg, "EXPERIMENT/DESIGN/DESIGN_DESCRIPTION"),
+            "study_title": _text(pkg, "STUDY/DESCRIPTOR/STUDY_TITLE"),
+            "study_abstract": _text(pkg, "STUDY/DESCRIPTOR/STUDY_ABSTRACT").replace("\r", ""),
+            "study_links": json.dumps(links, ensure_ascii=False) if links else "",
+            "organisation": _text(org, "Name") if org is not None else "",
+            "organisation_department": _text(org, "Address/Department") if org is not None else "",
+            "organisation_country": _text(org, "Address/Country") if org is not None else "",
+            "sample_title": _text(pkg, "SAMPLE/TITLE"),
+            "sample_alias": (pkg.find("SAMPLE").get("alias", "") if pkg.find("SAMPLE") is not None else ""),
+            "number_of_runs_for_sample": str(len(pkg.findall("RUN_SET/RUN"))),
+        }
+        for a in pkg.findall("SAMPLE/SAMPLE_ATTRIBUTES/SAMPLE_ATTRIBUTE"):
+            tag, val = _text(a, "TAG"), a.find("VALUE")
+            if not tag or val is None or val.text is None:
+                continue
+            key = tag if tag not in d and tag != "Run" else "sample_" + tag
+            d[key] = val.text.strip()
+        for run in pkg.findall("RUN_SET/RUN"):
+            rows.append({"Run": run.get("accession", ""), **d})
+    return rows

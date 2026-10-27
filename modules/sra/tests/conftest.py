@@ -29,9 +29,12 @@ class FakeTransport:
     def __init__(self, rules):
         self.rules = rules
         self.urls = []
+        self.posts = []
 
-    def __call__(self, url):
+    def __call__(self, url, data=None):
         self.urls.append(url)
+        self.posts.append(data)
+        url = url + ("?" + data.decode() if data else "")
         for key, body in self.rules:
             if key in url:
                 return body(url) if callable(body) else body

@@ -29,8 +29,8 @@ def load_identity(root):
     return email, key
 
 
-def _urlopen(url):
-    with urllib.request.urlopen(url, timeout=180) as r:
+def _urlopen(url, data=None):
+    with urllib.request.urlopen(url, data=data, timeout=180) as r:
         return r.read().decode("utf-8", errors="replace")
 
 
@@ -66,12 +66,14 @@ class Eutils:
             p["email"] = self.email
         if self.api_key:
             p["api_key"] = self.api_key
-        url = BASE + endpoint + "?" + urllib.parse.urlencode(p)
+        query = urllib.parse.urlencode(p)
+        # 长检索式 (如 200 个 accession OR) 用 POST, 否则 HTTP 414
+        url, data = (BASE + endpoint, query.encode()) if len(query) > 1500 else (BASE + endpoint + "?" + query, None)
         last = None
         for i in range(self.retries):
             self.sleep(self.gap)
             try:
-                body = self.transport(url)
+                body = self.transport(url, data) if data else self.transport(url)
                 err = _error_in(body)
                 if err is None:
                     return body

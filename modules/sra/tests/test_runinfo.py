@@ -100,7 +100,7 @@ def test_runs_not_found(project, tmp_path):
     lst.write_text("SRR1\nSRR2\n\nSRR3\nSRR3\nSRR999\n")
     rc, t = run01([TAXON, "--runs", str(lst)], [("esearch", esearch_json(2)), ("efetch", RUNINFO)])
     assert rc == 0
-    assert "SRR999%5Baccn%5D" in t.urls[0] or "SRR999[accn]" in t.urls[0].replace("%5B", "[").replace("%5D", "]")
+    assert b"SRR999%5Baccn%5D" in (t.posts[0] or t.urls[0].encode())
     nf = (project / "02_原始数据" / "sra" / "runs_not_found.txt").read_text().split()
     assert nf == ["SRR999"]
     assert manifest(project)["not_found"] == 1
@@ -111,3 +111,16 @@ def test_runinfo_file_quirks(project):
     assert rc == 0 and t.urls == []
     m = manifest(project)
     assert m["mode"] == "runinfo" and m["runs"] == 3
+
+
+def test_long_query_is_posted():
+    eu, t = fake_eutils([("esearch", esearch_json(0))])
+    eu.esearch("sra", " OR ".join(f"SRR{1000000 + i}[accn]" for i in range(200)))
+    assert t.posts[0] is not None and len(t.urls[0]) < 2000
+    assert b"SRR1000199" in t.posts[0]
+
+
+def test_short_query_is_get():
+    eu, t = fake_eutils([("esearch", esearch_json(0))])
+    eu.esearch("sra", "txid1[Organism:exp]")
+    assert t.posts[0] is None and "txid1" in t.urls[0]
