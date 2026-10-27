@@ -56,3 +56,31 @@ def parse_sra_packages(xml):
         for run in pkg.findall("RUN_SET/RUN"):
             rows.append({"Run": run.get("accession", ""), **d})
     return rows
+
+
+RANKS = ("phylum", "class", "order", "family", "genus", "species")
+
+
+def norm_taxid(s):
+    """'46593.0' / ' 46593 ' -> '46593'; 空值 -> ''."""
+    s = str(s or "").strip()
+    if s.lower() in ("", "nan", "none"):
+        return ""
+    return s[:-2] if s.endswith(".0") else s
+
+
+def parse_taxonomy_xml(xml):
+    """efetch db=taxonomy XML -> [{TaxID, rank_derived, phylum…species}]; 已合并的旧 taxid (AkaTaxIds) 也各给一行."""
+    from defusedxml import ElementTree as ET
+    rows = []
+    for t in ET.fromstring(xml).findall("Taxon"):
+        r = {"TaxID": t.findtext("TaxId", ""), "rank_derived": t.findtext("Rank", "")}
+        r.update({k: "" for k in RANKS})
+        for x in t.findall("LineageEx/Taxon") + [t]:
+            rank = x.findtext("Rank", "")
+            if rank in RANKS:
+                r[rank] = x.findtext("ScientificName", "")
+        rows.append(r)
+        for aka in t.findall("AkaTaxIds/TaxId"):
+            rows.append({**r, "TaxID": aka.text})
+    return rows
