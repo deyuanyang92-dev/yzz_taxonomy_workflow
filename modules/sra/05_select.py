@@ -15,9 +15,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "lib"))
-import pandas as pd  # noqa: E402
 from classify import select_samples  # noqa: E402
-from common import data_dir, read_tsv, summary, write_tsv  # noqa: E402
+from common import data_dir, summary  # noqa: E402
+from tsv import num, read_tsv, write_tsv  # noqa: E402
 
 
 def main(argv):
@@ -34,16 +34,22 @@ def main(argv):
     types = [x.strip() for x in a.type.split(",") if x.strip()]
     plats = [x.strip() for x in a.platform.split(",")] if a.platform else None
     if a.per == "run":
-        sel = select_samples(None, types, plats, a.layout, a.top, per="run", runs=read_tsv(d / "table.tsv"))
+        cols, table = read_tsv(d / "table.tsv")
+        cols = cols + [c for c in ("total_Gb", "runs") if c not in cols]
+        sel = select_samples(None, types, plats, a.layout, a.top, per="run", runs=table)
     else:
-        sel = select_samples(read_tsv(d / "samples.tsv"), types, plats, a.layout, a.top)
-    runs = []
-    for x in sel.get("runs", pd.Series(dtype=str)):
-        runs += [r for r in str(x).split(";") if r and r not in runs]
-    write_tsv(sel, d / f"selected_{a.tag}.tsv")
+        cols, samples = read_tsv(d / "samples.tsv")
+        sel = select_samples(samples, types, plats, a.layout, a.top)
+    runs, seen = [], set()
+    for x in sel:
+        for r in str(x.get("runs", "")).split(";"):
+            if r and r not in seen:
+                seen.add(r)
+                runs.append(r)
+    write_tsv(d / f"selected_{a.tag}.tsv", cols, sel)
     out = d / f"run_list_{a.tag}.txt"
     out.write_text("".join(r + "\n" for r in runs))
-    gb = pd.to_numeric(sel.get("total_Gb", pd.Series(dtype=str)), errors="coerce").sum()
+    gb = sum(num(x.get("total_Gb")) for x in sel)
     summary("05_select", [f"{a.type} | {a.layout} | 每组前 {a.top} 个{'样本' if a.per == 'sample' else ' run'}",
                           f"{len(sel)} 个{'样本' if a.per == 'sample' else ' run'}, {len(runs)} run, 约 {gb:.1f} Gb",
                           f"-> {out}",

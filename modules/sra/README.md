@@ -2,6 +2,21 @@
 
 一条命令得到某类群在 NCBI SRA 的**系统总表**：RunInfo（原样）+ 实验/研究标题与样本属性（仿 `kingfisher annotate`）+ 门–种 + 数据类型（浅层 WGS、深度 WGS、长读长、转录组、Hi-C…），输出 Excel 和可直接交给 kingfisher 的 run 清单。**本模块不下载 fastq/sra**，下载用 kingfisher 等现成工具。需求见 [REQUIREMENTS.md](REQUIREMENTS.md)，设计见 `docs/superpowers/specs/2026-10-27-sra-module-design.md`。
 
+## 安装
+
+**只需 Python ≥ 3.8，不需要 pip 安装任何包**（只用 Python 标准库；已在 3.12、3.13 的空环境实测）。拿到 yzz 工作流目录即可运行；NCBI API key 可选，见文末。
+
+| 原依赖 | 现在 |
+|---|---|
+| pandas | 标准库 `csv` + 字典（`tsv.py`、`classify.py`） |
+| xlsxwriter | 自写 `xlsx.py`（xlsx = zip + XML），格式不变 |
+| defusedxml | 标准库 `xml.etree`，先拒绝 `<!ENTITY` 声明（`parse.xml_root`） |
+| 网络 | 标准库 `urllib`（一直如此，不需要 requests / edirect） |
+
+改写前后输出逐字节一致（Polynoidae 全流程、Annelida / 网页 csv 的 04–05、4 种筛选参数；Excel 逐单元格值与类型一致）。Annelida 04 步 84 s → 8 s。
+
+## 用法
+
 ```bash
 python3 yzz.py sra all Polynoidae                              # 类群名: 自动取 RunInfo (= 网页 Send to → RunInfo)
 python3 yzz.py sra all Polynoidae --query 'WGS[Strategy]'      # 追加 Entrez 子句
@@ -42,5 +57,5 @@ LibrarySelection=PCR 的 WGS **不排除**，照常按数据量分类，只在 Q
 ## 其他
 
 - NCBI 身份（可选，有 key 快 3 倍）：`config/ncbi.json` 或 `NCBI_EMAIL` / `NCBI_API_KEY`。
-- 测试：`python3 -m pytest -q modules/sra/tests`（离线）；`python3 yzz.py sra all Polynoidae && python3 modules/sra/tests/check_polynoidae.py`（联网）。
-- 用时（无 key）：Polynoidae 525 run 约 1 分钟；Annelida 14,641 run 约 11.5 分钟。
+- 测试：`python3 -m pytest -q modules/sra/tests`（离线；只有跑测试需要 pytest，装了 openpyxl 时多一项兼容性核对）；`python3 yzz.py sra all Polynoidae && python3 modules/sra/tests/check_polynoidae.py`（联网）。
+- 用时（无 key）：Polynoidae 525 run 约 1 分钟；Annelida 14,641 run 约 8 分钟（内存峰值约 0.7 GB）。

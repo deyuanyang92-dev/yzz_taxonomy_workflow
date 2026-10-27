@@ -37,6 +37,7 @@
 - 派生列一律 `_derived` 后缀，并有 `category_rule_derived` 说明命中规则与数值。
 - 不静默丢数据：检索条数与取回条数核对（db=sra 的 Count = 唯一 Experiment 数；Annelida 实测 13,799 = 13,799，对应 14,641 run）；NCBI 返回 `<ERROR>`/错误页 → 重试，仍失败报错非零退出；`--runs` 中查不到的 run 列出。
 - 不硬编码 API key/邮箱：`config/ncbi.json` 或 `NCBI_EMAIL`/`NCBI_API_KEY`。
+- 依赖（2026-10-27 用户要求"能自己写的就自己写"）：只用 Python 标准库，不需 pip 安装任何包；xlsx 由 `xlsx.py` 自写。
 
 ## 5. 数据类型（04_table 派生，阈值在 `modules/sra/rules.json`）
 

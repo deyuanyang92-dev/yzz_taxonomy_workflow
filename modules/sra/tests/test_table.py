@@ -1,9 +1,9 @@
 import json
 
 import pytest
-from openpyxl import load_workbook
 
 from conftest import TAXON, load_step
+from xlsx_read import Book
 
 SHEETS = ["Summary", "Samples", "shallow_WGS", "deep_WGS", "long_read_WGS", "RNA-Seq", "Hi-C", "Other",
           "Runs", "QC", "Query"]
@@ -49,24 +49,22 @@ def test_merge_preserves_rows(project):
 def test_excel_sheets(project):
     setup(project, ROWS, ANN, TAX)
     load_step("04_table").main([TAXON])
-    wb = load_workbook(xlsx(project))
+    wb = Book(xlsx(project))
     assert wb.sheetnames == SHEETS
-    runs = wb["Runs"]
-    hdr = [c.value for c in runs[1]]
-    assert runs.max_row == 4
-    title = runs.cell(row=2, column=hdr.index("experiment_title") + 1)
-    assert title.data_type == "s"                                   # NCBI text never becomes a formula
-    qc = [r[0] for r in wb["QC"].iter_rows(min_row=2, values_only=True)]
+    runs = wb.sheet("Runs")["rows"]
+    hdr = [runs[0][j][1] for j in sorted(runs[0])]
+    assert len(runs) == 4
+    kind, value, _ = runs[1][hdr.index("experiment_title")]
+    assert kind == "s" and value.startswith("=cmd")                 # NCBI text never becomes a formula
+    qc = [r[0][1] for r in wb.sheet("QC")["rows"][1:]]
     assert "WGS_selection_PCR" in qc and "empty_BioProject" in qc
-    der = runs.cell(row=1, column=hdr.index("category_derived") + 1)
-    assert der.fill.fgColor.rgb.endswith("FFF2CC")
+    assert runs[0][hdr.index("category_derived")][2]["fill"].endswith("FFF2CC")
 
 
 def test_empty_pipeline(project):
     setup(project, [])
     assert load_step("04_table").main([TAXON]) == 0
-    wb = load_workbook(xlsx(project))
-    q = {r[0]: r[1] for r in wb["Query"].iter_rows(min_row=2, values_only=True)}
+    q = {r[0]: r[1] for r in Book(xlsx(project)).values("Query")[1:]}
     assert str(q["runs"]) == "0"
 
 
@@ -79,10 +77,35 @@ def test_requires_inputs(project):
 def test_excel_look_kept(project):
     setup(project, ROWS, ANN, TAX)
     load_step("04_table").main([TAXON])
-    ws = load_workbook(xlsx(project))["Runs"]
-    assert ws.freeze_panes == "A2" and ws.auto_filter.ref
-    assert ws.cell(row=1, column=1).font.b
-    assert 8 <= ws.column_dimensions["A"].width <= 52
+    ws = Book(xlsx(project)).sheet("Runs")
+    from xlsx import col_letter
+    assert ws["freeze"] == "A2" and ws["filter"] == f"A1:{col_letter(len(ws['rows'][0]) - 1)}4"
+    assert ws["rows"][0][0][2]["bold"]
+    assert all(8 <= w <= 51 for w in ws["widths"])
+
+
+def test_numbers_are_numbers(project):
+    setup(project, ROWS, ANN, TAX)
+    load_step("04_table").main([TAXON])
+    s = Book(xlsx(project)).sheet("Samples")["rows"]
+    hdr = [s[0][j][1] for j in sorted(s[0])]
+    assert s[1][hdr.index("n_runs")][:2] == ("n", 1)
+    assert s[1][hdr.index("total_Gb")][0] == "n"
+
+
+def test_xlsx_cleans_text(tmp_path):
+    from xlsx import MAX_CELL, write_xlsx
+    path = write_xlsx(tmp_path / "t.xlsx", {"S": (["a", "b"], [{"a": "x\x01y<&>", "b": "z" * (MAX_CELL + 5)}])})
+    row = Book(path).values("S")[1]
+    assert row[0] == "xy<&>" and len(row[1]) == MAX_CELL
+
+
+def test_xlsx_opens_in_openpyxl(project):
+    openpyxl = pytest.importorskip("openpyxl")          # 可选: 装了 openpyxl 时核对第三方读取器也能打开
+    setup(project, ROWS, ANN, TAX)
+    load_step("04_table").main([TAXON])
+    wb = openpyxl.load_workbook(xlsx(project))
+    assert wb.sheetnames == SHEETS and wb["Runs"].freeze_panes == "A2" and wb["Runs"].max_row == 4
 
 
 def test_sample_attribute_named_like_rank_does_not_hide_lineage(project):

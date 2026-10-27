@@ -12,10 +12,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "lib"))
-import pandas as pd  # noqa: E402
-from common import ROOT, data_dir, read_tsv, summary, write_tsv  # noqa: E402
+from common import ROOT, data_dir, summary  # noqa: E402
 from eutils import Eutils, EutilsError, load_identity  # noqa: E402
 from parse import parse_sra_packages  # noqa: E402
+from tsv import columns, read_tsv, write_tsv  # noqa: E402
 
 BATCH = 200
 
@@ -26,7 +26,7 @@ def main(argv, eutils=None):
     a, _ = p.parse_known_args(argv)
     eu = eutils or Eutils(*load_identity(ROOT))
     d = data_dir(a.taxon, "sra")
-    runs = [r for r in read_tsv(d / "runinfo.tsv").get("Run", pd.Series(dtype=str)) if r]
+    runs = [r["Run"] for r in read_tsv(d / "runinfo.tsv")[1] if r.get("Run")]
     mf = d / "manifest.json"
     manifest = json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {}
     rows = []
@@ -44,14 +44,17 @@ def main(argv, eutils=None):
     except EutilsError as e:
         print(f"[02_annotate] 失败: {e}")
         return 1
-    want = set(runs)
-    df = pd.DataFrame([x for x in rows if x["Run"] in want])
-    df = df.drop_duplicates("Run") if len(df) else pd.DataFrame(columns=["Run"])
-    missing = [x for x in runs if x not in set(df["Run"])]
+    want, got = set(runs), {}
+    for x in rows:
+        if x["Run"] in want and x["Run"] not in got:
+            got[x["Run"]] = x
+    df = list(got.values())
+    cols = columns(df) if df else ["Run"]
+    missing = [x for x in runs if x not in got]
     (d / "annotate_missing.txt").write_text("".join(x + "\n" for x in missing))
-    write_tsv(df, d / "annotate.tsv")
+    write_tsv(d / "annotate.tsv", cols, df)
     bad = len(runs) and len(missing) / len(runs) > 0.01
-    lines = [f"{len(df)}/{len(runs)} run 取到注释, {df.shape[1] - 1} 列 (含样本属性)", f"-> {d / 'annotate.tsv'}"]
+    lines = [f"{len(df)}/{len(runs)} run 取到注释, {len(cols) - 1} 列 (含样本属性)", f"-> {d / 'annotate.tsv'}"]
     if missing:
         lines.append(f"{'错误' if bad else '警告'}: {len(missing)} 个 run 无 XML 记录, 见 annotate_missing.txt")
     summary("02_annotate", lines)

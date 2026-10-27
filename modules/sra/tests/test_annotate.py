@@ -59,3 +59,16 @@ def test_step02_taxon_mode_reuses_term(project):
     assert load_step("02_annotate").main([TAXON], eutils=eu) == 0
     assert "txid46593" in t.urls[0] and "accn" not in t.urls[0]
     assert "retmax=500" in t.urls[1]
+
+
+def test_xml_entity_declaration_rejected():
+    import pytest
+    from eutils import EutilsError
+    from parse import parse_sra_packages
+    bomb = '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaa"><!ENTITY b "&a;&a;&a;">]><x>&b;</x>'
+    with pytest.raises(ValueError):
+        parse_sra_packages(bomb)
+    eu, t = fake_eutils([("efetch", bomb)])
+    with pytest.raises(EutilsError):
+        eu.efetch_ids("sra", ["1"])
+    assert len(t.urls) == 5                                   # treated as a bad response: retried, then error

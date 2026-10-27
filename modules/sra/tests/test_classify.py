@@ -1,5 +1,3 @@
-import pandas as pd
-
 from classify import classify_runs, load_rules, summarize_samples, summarize_species
 
 R = load_rules()
@@ -12,14 +10,18 @@ def run(run="SRR1", bs="SAMN1", strategy="WGS", sel="RANDOM", src="GENOMIC", pla
 
 
 def cat(*rows):
-    return list(classify_runs(pd.DataFrame(list(rows)), R)["category_derived"])
+    return [r["category_derived"] for r in classify_runs(list(rows), R)]
+
+
+def col(rows, name):
+    return [r[name] for r in rows]
 
 
 def test_pcr_selection_classified_by_volume():
     # Annelida 2026-10-27: WGS+PCR are mostly genome skimming / genome data (PRJNA1075478, PRJNA551036)
-    df = classify_runs(pd.DataFrame([run(sel="PCR", gb=1.84), run(run="R2", bs="S2", sel="PCR", gb=0.08)]), R)
-    assert list(df.category_derived) == ["shallow_WGS", "low_data_WGS"]
-    assert "PCR" in df.category_rule_derived[0]
+    df = classify_runs([run(sel="PCR", gb=1.84), run(run="R2", bs="S2", sel="PCR", gb=0.08)], R)
+    assert col(df, "category_derived") == ["shallow_WGS", "low_data_WGS"]
+    assert "PCR" in df[0]["category_rule_derived"]
 
 
 def test_rule_metagenomic():
@@ -37,20 +39,20 @@ def test_thresholds():
 
 
 def test_sample_sum_includes_pcr_runs_excludes_metagenomic():
-    df = classify_runs(pd.DataFrame([run(run="R1", gb=3), run(run="R2", sel="PCR", gb=20),
-                                     run(run="R3", src="METAGENOMIC", gb=50)]), R)
-    assert list(df.category_derived) == ["deep_WGS", "deep_WGS", "WGS_metagenomic"]
-    assert df.sample_total_Gb_derived[0] == 23.0
+    df = classify_runs([run(run="R1", gb=3), run(run="R2", sel="PCR", gb=20),
+                                     run(run="R3", src="METAGENOMIC", gb=50)], R)
+    assert col(df, "category_derived") == ["deep_WGS", "deep_WGS", "WGS_metagenomic"]
+    assert df[0]["sample_total_Gb_derived"] == 23.0
 
 
 def test_runs_of_one_sample_are_summed():
-    df = classify_runs(pd.DataFrame([run(run="R1", gb=6), run(run="R2", gb=6)]), R)
-    assert set(df.category_derived) == {"deep_WGS"}
+    df = classify_runs([run(run="R1", gb=6), run(run="R2", gb=6)], R)
+    assert set(col(df, "category_derived")) == {"deep_WGS"}
 
 
 def test_empty_biosample_uses_run():
-    df = classify_runs(pd.DataFrame([run(run="R1", bs=""), run(run="R2", bs="")]), R)
-    assert list(df.sample_key_derived) == ["R1", "R2"]
+    df = classify_runs([run(run="R1", bs=""), run(run="R2", bs="")], R)
+    assert col(df, "sample_key_derived") == ["R1", "R2"]
 
 
 def test_rnaseq_raw_and_long():
@@ -60,8 +62,8 @@ def test_rnaseq_raw_and_long():
 
 
 def test_rule_text():
-    df = classify_runs(pd.DataFrame([run(gb=1.84)]), R)
-    assert "1.84 Gb in [0.5,10) -> shallow_WGS" in df.category_rule_derived[0]
+    df = classify_runs([run(gb=1.84)], R)
+    assert "1.84 Gb in [0.5,10) -> shallow_WGS" in df[0]["category_rule_derived"]
 
 
 def test_case_insensitive():
@@ -69,15 +71,22 @@ def test_case_insensitive():
 
 
 def test_summaries():
-    df = classify_runs(pd.DataFrame([run(run="R1", gb=1), run(run="R2", gb=1),
-                                     run(run="R3", bs="S3", strategy="RNA-Seq", gb=4)]), R)
-    s = summarize_samples(df)
+    df = classify_runs([run(run="R1", gb=1), run(run="R2", gb=1),
+                                     run(run="R3", bs="S3", strategy="RNA-Seq", gb=4)], R)
+    cols, s = summarize_samples(df, list(df[0]))
     assert len(s) == 2
-    wgs = s[s.category_derived == "shallow_WGS"].iloc[0]
-    assert wgs.n_runs == 2 and wgs.total_Gb == 2.0 and wgs.runs == "R1;R2"
-    tax = pd.DataFrame([{"TaxID": "1", "rank_derived": "species", "phylum": "Annelida", "class": "", "order": "",
-                         "family": "F", "genus": "A", "species": "A b"}])
-    sp = summarize_species(s, tax)
+    wgs = [r for r in s if r["category_derived"] == "shallow_WGS"][0]
+    assert wgs["n_runs"] == 2 and wgs["total_Gb"] == 2.0 and wgs["runs"] == "R1;R2"
+    tax = [{"TaxID": "1", "rank_derived": "species", "phylum": "Annelida", "class": "", "order": "",
+            "family": "F", "genus": "A", "species": "A b"}]
+    sp_cols, sp = summarize_species(s, list(tax[0]), tax)
     assert len(sp) == 1
-    row = sp.iloc[0]
+    row = sp[0]
     assert row["family"] == "F" and row["shallow_WGS_samples"] == 1 and row["RNA-Seq_Gb"] == 4.0
+    assert sp_cols[:3] == ["TaxID", "ScientificName", "rank_derived"]
+
+
+def test_input_rows_not_modified():
+    rows = [run()]
+    classify_runs(rows, R)
+    assert "category_derived" not in rows[0]

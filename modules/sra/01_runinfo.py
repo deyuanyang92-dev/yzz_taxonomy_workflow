@@ -17,10 +17,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "lib"))
-import pandas as pd  # noqa: E402
-from common import ROOT, TODAY, data_dir, summary, write_tsv  # noqa: E402
+from common import ROOT, TODAY, data_dir, summary  # noqa: E402
 from eutils import Eutils, EutilsError, load_identity, resolve_taxid  # noqa: E402
 from parse import parse_runinfo  # noqa: E402
+from tsv import columns, write_tsv  # noqa: E402
 
 BATCH = 200
 REQUIRED = ["Run", "LibraryStrategy", "bases", "TaxID"]
@@ -105,15 +105,20 @@ def main(argv, eutils=None):
         print(f"[01_runinfo] 失败: {e}")
         return 1
 
-    df = pd.DataFrame(rows).drop_duplicates("Run") if rows else pd.DataFrame(columns=["Run", "Experiment"])
-    m["runs"] = int(len(df))
-    m["experiments"] = int(df["Experiment"].nunique()) if "Experiment" in df else 0
-    m["empty_bioproject"] = int((df.get("BioProject", pd.Series(dtype=str)).fillna("") == "").sum())
+    seen, df = set(), []
+    for r in rows:                                  # 同一 run 出现多次 (分页重叠) 只留第一条
+        if r["Run"] not in seen:
+            seen.add(r["Run"])
+            df.append(r)
+    cols = columns(df) if df else ["Run", "Experiment"]
+    m["runs"] = len(df)
+    m["experiments"] = len({r.get("Experiment") or "" for r in df} - {""}) if "Experiment" in cols else 0
+    m["empty_bioproject"] = sum(not r.get("BioProject") for r in df) if "BioProject" in cols else 0
     if m["mode"] == "taxon" and m["experiments"] != m["esearch_count"]:
         hard.append(f"唯一 Experiment {m['experiments']} != esearch Count {m['esearch_count']}")
     m["problems"] = hard + m["problems"]
     m["ok"] = not hard
-    write_tsv(df, out / "runinfo.tsv")
+    write_tsv(out / "runinfo.tsv", cols, df)
     (out / "manifest.json").write_text(json.dumps(m, ensure_ascii=False, indent=1), encoding="utf-8")
     lines = [f"{m['mode']}: {m['term'] or a.runs or a.runinfo}",
              f"{m['experiments']} experiment / {m['runs']} run; BioProject 为空 {m['empty_bioproject']}",

@@ -10,8 +10,6 @@ import datetime
 import re
 from pathlib import Path
 
-import pandas as pd
-
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / "cache"
 PROJECTS = ROOT / "projects"
@@ -52,6 +50,7 @@ def report_dir(taxon, module):
 
 
 def read_tsv(path, required=True):
+    import pandas as pd  # 延迟导入: sra 等纯标准库模块只用本文件的路径工具
     path = Path(path)
     if not path.exists():
         if required:
@@ -67,7 +66,7 @@ def write_tsv(df, path):
 
 def clean(x):
     """去 HTML 标签、合并空白; None/NaN/'None' -> ''."""
-    if x is None or (isinstance(x, float) and pd.isna(x)) or str(x) in ("None", "nan", "<NA>"):
+    if x is None or (isinstance(x, float) and x != x) or str(x) in ("None", "nan", "<NA>"):
         return ""
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", str(x))).strip()
 

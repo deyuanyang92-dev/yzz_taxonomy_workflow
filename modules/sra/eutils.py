@@ -12,6 +12,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from parse import xml_root
+
 BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 
 
@@ -50,9 +52,8 @@ def _error_in(body, expect=None):
         if any(len(r) != len(rows[0]) for r in rows):
             return "truncated RunInfo page"
     if expect == "xml":
-        from defusedxml import ElementTree as ET
         try:
-            ET.fromstring(s)
+            xml_root(s)
         except Exception as e:  # truncated / empty XML
             return f"invalid XML: {e}"
     if s[:15].upper().startswith("<!DOCTYPE HTML") or s[:5].lower() == "<html":
@@ -124,7 +125,6 @@ class Eutils:
 
 def resolve_taxid(eu, name):
     """类群名 -> NCBI taxid; 纯数字原样返回; 找不到或多个同名时报错并列出候选."""
-    from defusedxml import ElementTree as ET
     name = name.strip()
     if name.isdigit():
         return name
@@ -133,7 +133,7 @@ def resolve_taxid(eu, name):
         raise EutilsError(f"NCBI Taxonomy 未找到类群 {name!r}; 检查拼写或用 --taxid 指定")
     if r["count"] == 1 and len(r["ids"]) == 1:
         return r["ids"][0]
-    root = ET.fromstring(eu.efetch_ids("taxonomy", r["ids"]))
+    root = xml_root(eu.efetch_ids("taxonomy", r["ids"]))
     lines = [f"  {t.findtext('TaxId')}  {t.findtext('ScientificName')}  ({t.findtext('Lineage', '')[-80:]})"
              for t in root.findall("Taxon")]
     raise EutilsError(f"类群名 {name!r} 在 NCBI 有 {r['count']} 个同名, 请用 --taxid 指定:\n" + "\n".join(lines))

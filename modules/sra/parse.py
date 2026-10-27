@@ -1,6 +1,15 @@
 """NCBI 响应的纯解析函数 (无网络, 便于离线测试)."""
 import csv
 import io
+import xml.etree.ElementTree as ET
+
+
+def xml_root(text):
+    """标准库解析 NCBI XML. 先拒绝 <!ENTITY 声明 (实体膨胀攻击的唯一入口, NCBI 响应从不含),
+    而标准库 ElementTree 本身不加载外部实体/DTD, 因此不需要 defusedxml."""
+    if "<!ENTITY" in text:
+        raise ValueError("XML 含实体声明 (<!ENTITY), 拒绝解析")
+    return ET.fromstring(text)
 
 
 def parse_runinfo(text):
@@ -25,9 +34,8 @@ def parse_sra_packages(xml):
     样本属性 TAG -> 列名 (原样); 无 VALUE 的跳过; 与已有字段重名的加前缀 sample_.
     """
     import json
-    from defusedxml import ElementTree as ET
     rows = []
-    for pkg in ET.fromstring(xml).iter("EXPERIMENT_PACKAGE"):
+    for pkg in xml_root(xml).iter("EXPERIMENT_PACKAGE"):
         org = pkg.find("Organization")
         links = []
         for x in pkg.findall("STUDY/STUDY_LINKS/STUDY_LINK/XREF_LINK"):
@@ -71,9 +79,8 @@ def norm_taxid(s):
 
 def parse_taxonomy_xml(xml):
     """efetch db=taxonomy XML -> [{TaxID, rank_derived, phylum…species}]; 已合并的旧 taxid (AkaTaxIds) 也各给一行."""
-    from defusedxml import ElementTree as ET
     rows = []
-    for t in ET.fromstring(xml).findall("Taxon"):
+    for t in xml_root(xml).findall("Taxon"):
         r = {"TaxID": t.findtext("TaxId", ""), "rank_derived": t.findtext("Rank", "")}
         r.update({k: "" for k in RANKS})
         for x in t.findall("LineageEx/Taxon") + [t]:

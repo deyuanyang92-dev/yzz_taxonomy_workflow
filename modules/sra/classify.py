@@ -1,8 +1,10 @@
 """数据类型派生 (NCBI 无"浅层"字段, 按样本数据量推断) + 样本/物种汇总 + 下载清单筛选. 纯函数, 无网络."""
 import json
+import math
+import re
 from pathlib import Path
 
-import pandas as pd
+from tsv import num
 
 HERE = Path(__file__).resolve().parent
 CATEGORY_ORDER = ["shallow_WGS", "deep_WGS", "long_read_WGS", "low_data_WGS", "RNA-Seq", "long_read_RNA", "Hi-C",
@@ -25,34 +27,39 @@ def platform_type(platform, rules):
     return "short"
 
 
-def _col(df, name):
-    return df[name].fillna("").astype(str) if name in df else pd.Series([""] * len(df), index=df.index)
+def _v(r, name):
+    v = r.get(name)
+    return "" if v is None else str(v)
 
 
-def classify_runs(df, rules):
-    """加 platform_type_derived / sample_key_derived / sample_total_Gb_derived / category_derived / category_rule_derived."""
-    df = df.copy()
-    strat = _col(df, "LibraryStrategy").str.upper()
-    sel = _col(df, "LibrarySelection").str.upper()
-    src = _col(df, "LibrarySource").str.upper()
-    gb = pd.to_numeric(_col(df, "bases"), errors="coerce").fillna(0) / 1e9
-    df["platform_type_derived"] = [platform_type(p, rules) for p in _col(df, "Platform")]
-    bs = _col(df, "BioSample").str.strip()
-    df["sample_key_derived"] = bs.where(bs != "", _col(df, "Run"))
-    # LibrarySelection=PCR 不排除: Annelida 实测 WGS+PCR 多为 genome skimming / 基因组数据, 只在 QC 提示
-    excluded = (strat == "WGS") & src.isin([x.upper() for x in rules["metagenomic_sources"]])
-    grp = [df["sample_key_derived"], strat, df["platform_type_derived"]]
-    total = gb.where(~excluded, 0).groupby(grp).transform("sum")
-    df["sample_total_Gb_derived"] = total.where(~excluded, gb).round(3)
+def classify_runs(rows, rules):
+    """每行加 platform_type_derived / sample_key_derived / sample_total_Gb_derived / category_derived /
+    category_rule_derived; 返回新行列表 (不改输入)."""
+    meta = {x.upper() for x in rules["metagenomic_sources"]}
+    out, keys = [], []
+    for r in rows:
+        r = dict(r)
+        strat, src = _v(r, "LibraryStrategy").upper(), _v(r, "LibrarySource").upper()
+        r["platform_type_derived"] = platform_type(_v(r, "Platform"), rules)
+        r["sample_key_derived"] = _v(r, "BioSample").strip() or _v(r, "Run")
+        # LibrarySelection=PCR 不排除: Annelida 实测 WGS+PCR 多为 genome skimming / 基因组数据, 只在 QC 提示
+        excluded = strat == "WGS" and src in meta
+        gb = num(r.get("bases")) / 1e9
+        out.append(r)
+        keys.append(((r["sample_key_derived"], strat, r["platform_type_derived"]), gb, excluded))
+    total = {}
+    for k, gb, excluded in keys:
+        total.setdefault(k, []).append(0 if excluded else gb)
+    total = {k: math.fsum(v) for k, v in total.items()}
     lo, hi = rules["low_max_gb"], rules["shallow_max_gb"]
-    cats, why = [], []
-    for i in range(len(df)):
-        s, t, g = strat.iat[i], df["platform_type_derived"].iat[i], df["sample_total_Gb_derived"].iat[i]
-        raw = _col(df, "LibraryStrategy").iat[i]
-        if excluded.iat[i]:
-            c, w = "WGS_metagenomic", f"WGS & {src.iat[i]} -> WGS_metagenomic"
+    for r, (k, gb, excluded) in zip(out, keys):
+        g = round(gb if excluded else total[k], 3)
+        r["sample_total_Gb_derived"] = g
+        s, t, raw = k[1], k[2], _v(r, "LibraryStrategy")
+        if excluded:
+            c, w = "WGS_metagenomic", f"WGS & {_v(r, 'LibrarySource').upper()} -> WGS_metagenomic"
         elif s == "WGS" and t == "long":
-            c, w = "long_read_WGS", f"WGS & {df['Platform'].iat[i]} -> long_read_WGS"
+            c, w = "long_read_WGS", f"WGS & {_v(r, 'Platform')} -> long_read_WGS"
         elif s == "WGS" and t == "short":
             if g < lo:
                 c, rng = "low_data_WGS", f"< {lo:g}"
@@ -60,21 +67,19 @@ def classify_runs(df, rules):
                 c, rng = "shallow_WGS", f"in [{lo:g},{hi:g})"
             else:
                 c, rng = "deep_WGS", f">= {hi:g}"
-            w = f"WGS & {sel.iat[i]} & short & {g:.2f} Gb {rng} -> {c}"
+            w = f"WGS & {_v(r, 'LibrarySelection').upper()} & short & {g:.2f} Gb {rng} -> {c}"
         elif s == "RNA-SEQ" and t == "long":
             c, w = "long_read_RNA", "RNA-Seq & long -> long_read_RNA"
         else:
             c, w = raw or "unknown", f"LibraryStrategy={raw}"
-        cats.append(c)
-        why.append(w)
-    df["category_derived"], df["category_rule_derived"] = cats, why
-    return df
+        r["category_derived"], r["category_rule_derived"] = c, w
+    return out
 
 
 def _join(xs):
     out = []
     for x in xs:
-        x = str(x)
+        x = "" if x is None else str(x)
         if x and x != "nan" and x not in out:
             out.append(x)
     return ";".join(out)
@@ -82,29 +87,35 @@ def _join(xs):
 
 def _first(xs):
     for x in xs:
-        if str(x) not in ("", "nan"):
+        if x is not None and str(x) not in ("", "nan"):
             return x
     return ""
 
 
-def summarize_samples(df):
-    """一行一个 样本 × 数据类型 (挑选用)."""
-    cols = ["sample_key_derived", "category_derived", "TaxID", "ScientificName", "BioProject", "BioSample",
-            "n_runs", "total_Gb", "Platform", "LibraryLayout", "runs"]
-    extra = [c for c in LINEAGE + SAMPLE_INFO if c in df]
-    if df.empty:
-        return pd.DataFrame(columns=cols + extra)
-    d = df.copy()
-    d["_gb"] = pd.to_numeric(_col(d, "bases"), errors="coerce").fillna(0) / 1e9
+def _groups(rows, key):
+    g = {}
+    for r in rows:
+        g.setdefault(key(r), []).append(r)
+    return g
+
+
+SAMPLE_COLS = ["sample_key_derived", "category_derived", "TaxID", "ScientificName", "BioProject", "BioSample",
+               "n_runs", "total_Gb", "Platform", "LibraryLayout", "runs"]
+
+
+def summarize_samples(rows, cols):
+    """一行一个 样本 × 数据类型 (挑选用). cols = 总表列名 (决定带哪些阶元/样本信息列). -> (cols, rows)"""
+    extra = [c for c in LINEAGE + SAMPLE_INFO if c in cols]
     out = []
-    for (key, cat), g in d.groupby(["sample_key_derived", "category_derived"], sort=False):
+    for (key, cat), g in _groups(rows, lambda r: (r["sample_key_derived"], r["category_derived"])).items():
         r = {"sample_key_derived": key, "category_derived": cat, "n_runs": len(g),
-             "total_Gb": round(g["_gb"].sum(), 3), "runs": _join(g["Run"]),
-             "Platform": _join(_col(g, "Platform")), "LibraryLayout": _join(_col(g, "LibraryLayout"))}
+             "total_Gb": round(math.fsum(num(x.get("bases")) / 1e9 for x in g), 3),
+             "runs": _join(x.get("Run") for x in g), "Platform": _join(x.get("Platform") for x in g),
+             "LibraryLayout": _join(x.get("LibraryLayout") for x in g)}
         for c in ["TaxID", "ScientificName", "BioProject", "BioSample"] + extra:
-            r[c] = _first(_col(g, c))
+            r[c] = _first(x.get(c) for x in g)
         out.append(r)
-    return pd.DataFrame(out, columns=cols + extra)
+    return SAMPLE_COLS + extra, out
 
 
 def ordered_categories(cats):
@@ -112,43 +123,58 @@ def ordered_categories(cats):
     return [c for c in CATEGORY_ORDER if c in cats] + sorted(c for c in cats if c not in CATEGORY_ORDER)
 
 
-def summarize_species(samples, taxonomy):
-    """一行一个 TaxID: 阶元 + 各数据类型的样本数与 Gb."""
-    if samples.empty:
-        return pd.DataFrame(columns=["TaxID", "ScientificName"] + LINEAGE)
-    s = samples.copy()
-    s["TaxID"] = s["TaxID"].astype(str).str.replace(r"\.0$", "", regex=True)
-    base = s.groupby("TaxID", sort=False)["ScientificName"].first().reset_index()
-    tax = taxonomy[["TaxID"] + [c for c in LINEAGE if c in taxonomy]] if len(taxonomy) else pd.DataFrame(columns=["TaxID"])
-    base = base.merge(tax.astype(str), on="TaxID", how="left")
-    for cat in ordered_categories(s["category_derived"]):
-        g = s[s.category_derived == cat].groupby("TaxID")
-        base[f"{cat}_samples"] = base["TaxID"].map(g.size()).fillna(0).astype(int)
-        base[f"{cat}_Gb"] = base["TaxID"].map(g["total_Gb"].sum()).fillna(0).round(3)
-    return base.fillna("")
+def summarize_species(samples, tax_cols, taxonomy):
+    """一行一个 TaxID: 阶元 + 各数据类型的样本数与 Gb. -> (cols, rows)"""
+    if not samples:
+        return ["TaxID", "ScientificName"] + LINEAGE, []
+    lin = [c for c in LINEAGE if c in tax_cols] if taxonomy else []
+    tax = {}
+    for t in taxonomy:
+        tax.setdefault(str(t.get("TaxID", "")), t)
+    by = _groups(samples, lambda r: re.sub(r"\.0$", "", str(r.get("TaxID", ""))))
+    cats = ordered_categories(r["category_derived"] for r in samples)
+    out = []
+    for tid, g in by.items():
+        r = {"TaxID": tid, "ScientificName": g[0].get("ScientificName", "")}
+        r.update({c: tax.get(tid, {}).get(c, "") for c in lin})
+        for cat in cats:
+            gc = [x for x in g if x["category_derived"] == cat]
+            r[f"{cat}_samples"] = len(gc)
+            r[f"{cat}_Gb"] = round(math.fsum(num(x.get("total_Gb")) for x in gc), 3)
+        out.append(r)
+    cols = ["TaxID", "ScientificName"] + lin + [f"{c}_{k}" for c in cats for k in ("samples", "Gb")]
+    return cols, out
 
 
-def _keep(df, types, platforms, layout, plat_col="Platform"):
-    m = df["category_derived"].isin(types)
-    if platforms:
-        want = {p.upper() for p in platforms}
-        m &= _col(df, plat_col).str.upper().str.split(";").apply(lambda xs: bool(want & set(xs)))
-    if layout.upper() != "ALL":
-        m &= _col(df, "LibraryLayout").str.upper().str.contains(layout.upper(), regex=False)
-    return df[m]
+def _keep(rows, types, platforms, layout):
+    want = {p.upper() for p in platforms or []}
+    out = []
+    for r in rows:
+        if r.get("category_derived") not in types:
+            continue
+        if want and not want & set(_v(r, "Platform").upper().split(";")):
+            continue
+        if layout.upper() != "ALL" and layout.upper() not in _v(r, "LibraryLayout").upper():
+            continue
+        out.append(r)
+    return out
+
+
+def _top(rows, gb, top):
+    keys = ("TaxID", "BioProject", "category_derived")
+    n, out = {}, []
+    for r in sorted(rows, key=lambda r: -gb(r)):          # sorted 稳定: 同量保持原顺序
+        k = tuple(r.get(x) for x in keys)
+        if n.get(k, 0) < top:
+            n[k] = n.get(k, 0) + 1
+            out.append(r)
+    return out
 
 
 def select_samples(samples, types, platforms, layout, top, per="sample", runs=None):
     """每 TaxID×BioProject×类型 取数据量最大的 top 个样本 (per="run" 时按 run, 需传 runs 表 = 旧脚本行为)."""
-    keys = ["TaxID", "BioProject", "category_derived"]
     if per == "run":
-        r = _keep(runs, types, platforms, layout).copy()
-        r["total_Gb"] = (pd.to_numeric(_col(r, "bases"), errors="coerce").fillna(0) / 1e9).round(3)
-        r = r.sort_values("total_Gb", ascending=False, kind="stable").groupby(keys, sort=False).head(top)
-        return r.assign(runs=r["Run"])
-    if samples.empty:
-        return samples
-    s = _keep(samples, types, platforms, layout).copy()
-    s["_gb"] = pd.to_numeric(s["total_Gb"], errors="coerce").fillna(0)
-    s = s.sort_values("_gb", ascending=False, kind="stable").groupby(keys, sort=False).head(top)
-    return s.drop(columns="_gb")
+        r = [dict(x, total_Gb=round(num(x.get("bases")) / 1e9, 3), runs=x.get("Run", ""))
+             for x in _keep(runs or [], types, platforms, layout)]
+        return _top(r, lambda x: x["total_Gb"], top)
+    return _top(_keep(samples, types, platforms, layout), lambda x: num(x.get("total_Gb")), top)

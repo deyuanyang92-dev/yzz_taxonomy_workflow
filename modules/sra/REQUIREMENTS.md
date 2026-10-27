@@ -16,4 +16,5 @@
 | 12 | 增量更新（只取上次以来新增） | 设计 | ⏳ 未做（Annelida 全量约数分钟） |
 | 13 | 用同种/同属基因组大小估算覆盖度 | 设计 | ⏳ 未做 |
 | 14 | WGS+PCR 不当作扩增子排除，只在 QC 提示 | 实测 Annelida 2026-10-27（多为 genome skimming / 基因组） | ✅ 04 |
-| 15 | Annelida 规模（1.5 万 run、400+ 列）可在合理时间/内存内出 Excel | 实测 | ✅ 04 xlsxwriter 流式写（84 s / 0.4 GB） |
+| 15 | Annelida 规模（1.5 万 run、400+ 列）可在合理时间/内存内出 Excel | 实测 | ✅ 04 流式写 xlsx（8 s / 0.7 GB） |
+| 16 | 安装方便：能自己写的就自己写，减少安装依赖 | 用户 2026-10-27 | ✅ 只用 Python 标准库（去掉 pandas / xlsxwriter / defusedxml），输出与原版逐字节一致 |
