@@ -13,7 +13,6 @@
 """
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -131,8 +130,12 @@ def export(taxon, tag):
             s = seqs.get(x["ACCESSION"])
             if s is None:
                 continue
+            try:
+                seq = str(s.seq)
+            except Exception:   # CON/WGS 主记录等无序列内容 (Bio.Seq.UndefinedSequenceError; Eunicidae 2026-11-08)
+                continue
             hdr = f"{x['accession']}|{x['organism'].replace(' ', '_')}|{x['specimen_key']}"
-            lines.append(f">{hdr}\n{str(s.seq)}")
+            lines.append(f">{hdr}\n{seq}")
         (fa / f"{gn}.fasta").write_text("\n".join(lines) + "\n", encoding="utf-8")
         nfa[gn] = len(lines)
     out = report_dir(taxon, "genbank") / f"{taxon}_GenBank_{tag}_{TODAY}.xlsx"

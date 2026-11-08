@@ -2,8 +2,9 @@
 把下载的线粒体记录全部用 MitoZ 重新注释, 统一 NCBI 注释不一致 / 注释缺失. 原始 .gb 不改.
 
 输入: 02_原始数据/genbank/gb/<tag>/*.gb   (不给 --tag 时处理名为 mito* 的 tag: mito、mitogenome)
-输出: 02_原始数据/genbank/mitoz/<tag>/    (batch_mitoz.py 原样输出)
-      04.final_gb/*.gbf 每条记录 (cox1 打头, 原 NCBI 头部元数据已恢复); all.final.gbf 合并; annotation-summary.tsv
+输出: 02_原始数据/genbank/mitoz/<tag>/    (batch_mitoz.py 原样输出, 见其 README.txt)
+      final_annotation/<accession>.gb 每条记录 (cox1 打头, 原 NCBI 头部已恢复); final_annotation_all.gb; summary.tsv;
+      original_vs_mitom.tsv (与原注释逐基因对照); ncbi_submission/; reports/ (旧版为 04.final_gb/, annotation-summary.tsv)
       内部 ID 中间文件 (00.*/01.*/03.*、id_map.tsv) 跑完即删; 问题样本的 MitoZ 日志留在 failed_logs/
 用法: python3 yzz.py genbank 05 <Taxon> --conda_env_mitoz <env> [--tag mitogenome] [--clade ...] [--genetic_code 5]
       其余参数原样传给 batch_mitoz.py run (如 --threads 8 --max_tasks 4 --keep_intermediate yes)
@@ -62,6 +63,10 @@ def passthrough(rest):
     return out
 
 
+def num(v):
+    return int(v) if str(v).strip().isdigit() else 0
+
+
 def n_intron_records(gb_dir):
     """原 NCBI 记录中带 intron 特征的条数 (MitoZ 不会注释出来)."""
     n = 0
@@ -106,20 +111,28 @@ def main(argv):
         out = root / "mitoz" / tag
         cmd = [sys.executable, str(SCRIPT), "run", "-i", str(gb_root / tag), "-o", str(out), *loc, *rest]
         rc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
-        rows = list(csv.DictReader((out / "annotation-summary.tsv").open(encoding="utf-8"), delimiter="\t")) \
-            if (out / "annotation-summary.tsv").exists() else []
-        short = sum(int(r["PCG"]) < 13 or int(r["tRNA"]) < 22 or int(r["rRNA"]) < 2 for r in rows)
-        prob = out / "all_problem_samples.txt"
-        n_prob = sum(1 for x in prob.open(encoding="utf-8") if x.strip() and not x.startswith("#")) if prob.exists() else 0
-        rep = out / "intron_report.tsv"
+        # MitoM 新版输出 (2026-11): summary.tsv (protein_genes/tRNAs/rRNAs/ncbi_errors), final_annotation/, reports/;
+        # 旧版: annotation-summary.tsv (PCG/tRNA/rRNA), 04.final_gb/, all_problem_samples.txt. 两种都认.
+        new = (out / "summary.tsv").exists()
+        sf = out / ("summary.tsv" if new else "annotation-summary.tsv")
+        rows = list(csv.DictReader(sf.open(encoding="utf-8"), delimiter="\t")) if sf.exists() else []
+        k = ("protein_genes", "tRNAs", "rRNAs") if new else ("PCG", "tRNA", "rRNA")
+        short = sum(num(r.get(k[0])) < 13 or num(r.get(k[1])) < 22 or num(r.get(k[2])) < 2 for r in rows)
+        if new:
+            n_prob = sum(num(r.get("ncbi_errors")) > 0 for r in rows)
+        else:
+            prob = out / "all_problem_samples.txt"
+            n_prob = sum(1 for x in prob.open(encoding="utf-8") if x.strip() and not x.startswith("#")) if prob.exists() else 0
+        rep = next((x for x in (out / "reports" / "intron_report.tsv", out / "intron_report.tsv") if x.exists()), out / "intron_report.tsv")
         introns = [r for r in csv.DictReader(rep.open(encoding="utf-8"), delimiter="\t")
                    if r.get("intron_start") and r.get("written", "yes") != "no"] if rep.exists() else []
         fix = (f"mito_intron 补 intron {len(introns)} 个 / {len({(r['record'], r['gene']) for r in introns})} 个基因"
                if rep.exists() else "mito_intron 未运行 (无 exonerate: --intron_bin)")
         lines.append(f"{tag}: {'OK' if rc == 0 else f'FAILED (exit {rc}, 见 pipeline.log)'} — 注释完成 {len(rows)} 条; "
-                     f"基因不全 (PCG<13/tRNA<22/rRNA<2) {short}; 问题样本 {n_prob}; "
+                     f"基因不全 (PCG<13/tRNA<22/rRNA<2) {short}; {'NCBI table2asn 有错误' if new else '问题样本'} {n_prob}; "
                      f"原记录含 intron {n_intron_records(gb_root / tag)} 条; {fix}")
-    summary("05_mitoz", lines + [f"输出: {root / 'mitoz'}/<tag>/04.final_gb/*.gbf, all.final.gbf, annotation-summary.tsv, intron_report.tsv"])
+    summary("05_mitoz", lines + [f"输出: {root / 'mitoz'}/<tag>/final_annotation/*.gb, final_annotation_all.gb, summary.tsv, "
+                                 "original_vs_mitom.tsv, ncbi_submission/, reports/intron_report.tsv (README.txt 有说明)"])
     return 0
 
 

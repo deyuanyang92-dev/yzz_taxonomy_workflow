@@ -65,15 +65,19 @@ try:
               "--threads", "1", "--max_tasks", "1", "--scheduler_backend", "threads")
     out = PROJ / "02_原始数据" / "genbank" / "mitoz" / "mitogenome"
     check("run OK, exit 0", r.returncode == 0 and "mitogenome: OK" in r.stdout)
-    finals = sorted(p.name for p in (out / "04.final_gb").glob("*.gbf"))
-    check("one final .gbf per record", finals == ["XX000001.1.gbf", "XX000002.1.gbf"])
+    # MitoM 新版输出 (2026-11): final_annotation/<acc>.gb, final_annotation_all.gb, summary.tsv, reports/
+    finals = sorted(p.name for p in (out / "final_annotation").glob("*.gb"))
+    check("one final .gb per record", finals == ["XX000001.1.gb", "XX000002.1.gb"])
     check("identical sequence deduplicated and reported",
-          "XX000003.1" in (out / "dedup_report.tsv").read_text())
-    check("all.final.gbf merged", (out / "all.final.gbf").read_text().count("LOCUS") == 2)
-    txt = (out / "04.final_gb" / "XX000001.1.gbf").read_text()
+          "XX000003.1" in (out / "reports" / "dedup_report.tsv").read_text())
+    check("final_annotation_all.gb merged", (out / "final_annotation_all.gb").read_text().count("LOCUS") == 2)
+    check("summary.tsv one row per record", (out / "summary.tsv").read_text().strip().count("\n") == 2)
+    check("05 summary counts annotated records (not 0)", "注释完成 2 条" in r.stdout)
+    txt = (out / "final_annotation" / "XX000001.1.gb").read_text()
     check("NCBI organism restored (no MitoZ placeholder)",
           "Perinereis aibuhitensis" in txt and "Test sp." not in txt)
-    check("MitoZ annotation present", "/gene=\"cox1\"" in txt)
+    # MitoM 2026-11 起会剔除不合理的 CDS (人造 ACGT 重复上的假 cox1 被删); 包装层只需证明注释能传到最终结果
+    check("MitoZ annotation present", "\n     CDS " in (out / "final_annotation_all.gb").read_text())
     check("internal-ID intermediates deleted",
           not any(out.glob("00.*")) and not any(out.glob("01.*")) and not any(out.glob("03.*")))
     check("summary reports intron records", "原记录含 intron 1 条" in r.stdout)
@@ -90,12 +94,13 @@ try:
         r = run05("--mitoz_path", str(exe), "--intron_bin", str(ibin), "--genetic_code", "4",
                   "--threads", "1", "--max_tasks", "1", "--scheduler_backend", "threads")
         check("intron step adds 2 introns in 2 genes", "mito_intron 补 intron 2 个 / 2 个基因" in r.stdout)
-        rep = (out / "intron_report.tsv").read_text()
-        check("intron report: cox1 + nad5, group I, NCBI coordinates (after reorientation)",
-              all(x in rep.lower() for x in ("cox1\t", "nad5\t", "group i intron"))
-              and "3956\t4808" in rep and "7544\t9224" in rep)
+        rep = (out / "reports" / "intron_report.tsv").read_text()
+        # MitoM 2026-11: 基因名大写 (COX1/ND5); 坐标为 cox1 打头后的最终记录坐标 (原记录 COX1 intron 4156..5008 = 853 bp)
+        check("intron report: COX1 + ND5, coordinates of the final (cox1-first) record",
+              all(x in rep.lower() for x in ("cox1\t", "nd5\t"))
+              and "894\t1746\t853" in rep and "4482\t6162" in rep)
         check("final GenBank has 2 intron features",
-              (out / "all.final.gbf").read_text().count("\n     intron ") == 2)
+              (out / "final_annotation_all.gb").read_text().count("\n     intron ") == 2)
     else:
         print("SKIP intron step (no exonerate in /root/miniconda3/envs/mitointron)")
     shutil.rmtree(tmp, ignore_errors=True)
