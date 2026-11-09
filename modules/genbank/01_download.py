@@ -14,7 +14,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-from common import ROOT, data_dir, summary
+from common import ROOT, summary
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gbpaths import step_dir, write_readme  # noqa: E402
 
 try:
     from g2t.download import add_selection_args, describe, download, options_from_args
@@ -31,13 +33,14 @@ def main(argv):
     f = ROOT / "config" / "ncbi.json"
     if f.exists():
         cfg = json.loads(f.read_text(encoding="utf-8"))
-    res = download(a.taxon, str(data_dir(a.taxon, "genbank") / "gb"), options_from_args(a), dry_run=a.dry_run,
+    res = download(a.taxon, str(step_dir(a.taxon, "gb")), options_from_args(a), dry_run=a.dry_run,
                    email=cfg.get("email") or None, api_key=cfg.get("api_key") or None,
                    progress=not a.quiet, report=a.report,
                    store=a.store or str(ROOT / "cache" / "genbank" / "nuccore_records.sqlite"))
     lines = describe(res, a.dry_run)
     if res.failed:
         lines[-1] += "  (失败批次: 重跑同一命令即可续传)"
+    write_readme(a.taxon)
     summary("01_download", lines)
     return 1 if res.failed else 0
 

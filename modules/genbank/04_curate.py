@@ -26,7 +26,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-from common import TODAY, data_dir, read_tsv, report_dir, summary
+from common import TODAY, read_tsv, summary
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gbpaths import step_dir, write_readme  # noqa: E402
 from excel import YELLOW, write_workbook
 
 try:
@@ -47,15 +49,14 @@ def main(argv):
     a, _ = p.parse_known_args(argv)
     cmap = parse_map(a.map)
     sheet = int(a.sheet) if str(a.sheet).isdigit() else a.sheet
-    root = data_dir(a.taxon, "genbank")
-    tags = [a.tag] if a.tag else sorted(f.stem[len("matrix_"):] for f in root.glob("matrix_*.tsv"))
+    tags = [a.tag] if a.tag else sorted(f.stem[len("matrix_"):] for f in step_dir(a.taxon, "out").glob("matrix_*.tsv"))
     if not tags:
         raise SystemExit("没有矩阵: 先运行 genbank 03")
-    cur = root / "curation"
+    cur = step_dir(a.taxon, "curation")
     cur.mkdir(exist_ok=True)
     lines = []
     for tag in tags:
-        mat = read_tsv(root / f"matrix_{tag}.tsv")
+        mat = read_tsv(step_dir(a.taxon, "out") / f"matrix_{tag}.tsv")
         genes = [c for c in mat.columns if c not in ("specimen_key", "organism", "voucher_standardized",
                                                        "voucher_as_submitted", "voucher_note", "n_genes")
                  and mat[c].astype(str).str.contains(r"^[A-Z]{1,6}_?\d{5,}\.\d", regex=True).any()]
@@ -89,13 +90,14 @@ def main(argv):
             if mapping is not None:
                 sheets["Column mapping"] = mapping
             sheets["Matrix (GenBank)"] = mat
-            xlsx = report_dir(a.taxon, "genbank") / f"{a.taxon}_GenBank_{tag}_curated_{src.stem}_{TODAY}.xlsx"
+            xlsx = step_dir(a.taxon, "curation") / f"{a.taxon}_GenBank_{tag}_curated_{src.stem}_{TODAY}.xlsx"
             xlsx = write_workbook(xlsx, sheets, freeze={"Matrix": "C2", "Matrix (GenBank)": "C2"},
                                   shade={"Matrix": [("curated_fields", lambda v: bool(v), YELLOW)]})
             lines.append(f"{tag}: {src.name} -> {len(log)} 处修改（{log['specimen'].nunique() if len(log) else 0} 个标本），"
                          f"问题 {len(problems)}；Excel C: {xlsx}")
             if mapping is not None:
                 lines.append("  列识别: " + "; ".join(f"{r.user_column}->{r.used_as}" for r in mapping.itertuples()))
+    write_readme(a.taxon)
     summary("04_curate", lines)
     return 0
 

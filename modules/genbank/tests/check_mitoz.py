@@ -43,7 +43,7 @@ def record(acc, organism, intron, seq):
 
 try:
     shutil.rmtree(PROJ, ignore_errors=True)
-    gb = PROJ / "02_原始数据" / "genbank" / "gb" / "mitogenome"
+    gb = PROJ / "02_原始数据" / "genbank" / "gb2taxonomy" / "01_download" / "mitogenome"
     gb.mkdir(parents=True)
     SeqIO.write([record("XX000001.1", "Perinereis aibuhitensis", True, "ACGT" * 300),
                  record("XX000002.1", "Perinereis nuntia", False, "AACGTT" * 200),
@@ -63,7 +63,7 @@ try:
     # --gene / --minlen come from `genbank all` and must not reach batch_mitoz.py
     r = run05("--mitoz_path", str(exe), "--gene", "COI", "--minlen", "500",
               "--threads", "1", "--max_tasks", "1", "--scheduler_backend", "threads")
-    out = PROJ / "02_原始数据" / "genbank" / "mitoz" / "mitogenome"
+    out = PROJ / "02_原始数据" / "genbank" / "mitom" / "mitogenome"
     check("run OK, exit 0", r.returncode == 0 and "mitogenome: OK" in r.stdout)
     # MitoM 新版输出 (2026-11): final_annotation/<acc>.gb, final_annotation_all.gb, summary.tsv, reports/
     finals = sorted(p.name for p in (out / "final_annotation").glob("*.gb"))

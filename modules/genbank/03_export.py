@@ -19,7 +19,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 import pandas as pd
 from Bio import SeqIO
-from common import TODAY, data_dir, report_dir, summary, write_tsv
+from common import TODAY, summary, write_tsv
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gbpaths import step_dir, write_readme  # noqa: E402
 from excel import YELLOW, write_workbook
 from g2t.curate import standardize_vouchers
 
@@ -39,9 +41,8 @@ def join(xs):
 
 
 def export(taxon, tag):
-    root = data_dir(taxon, "genbank")
-    g = root / "g2t" / tag
-    man = json.loads((root / "gb" / tag / "manifest.json").read_text(encoding="utf-8"))
+    g = step_dir(taxon, "g2t", tag)
+    man = json.loads((step_dir(taxon, "gb", tag) / "manifest.json").read_text(encoding="utf-8"))
     vdir = g / "updated_species_vouchers"
     rfile = vdir / "reconciled_species_voucher.csv"
     rec = pd.read_csv(rfile if rfile.exists() else vdir / "updated_species_voucher.csv", dtype=str).fillna("")
@@ -117,10 +118,10 @@ def export(taxon, tag):
     query = pd.DataFrame([(k, json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v) for k, v in man.items()],
                          columns=["field", "value"])
     # FASTA per gene
-    fa = root / "fasta" / tag
+    fa = step_dir(taxon, "out") / "fasta" / tag
     fa.mkdir(parents=True, exist_ok=True)
     seqs = {}
-    for f in sorted((root / "gb" / tag).glob("*.gb")):
+    for f in sorted(step_dir(taxon, "gb", tag).glob("*.gb")):
         for s in SeqIO.parse(str(f), "genbank"):
             seqs[s.id.split(".")[0]] = s
     nfa = {}
@@ -138,8 +139,8 @@ def export(taxon, tag):
             lines.append(f">{hdr}\n{seq}")
         (fa / f"{gn}.fasta").write_text("\n".join(lines) + "\n", encoding="utf-8")
         nfa[gn] = len(lines)
-    out = report_dir(taxon, "genbank") / f"{taxon}_GenBank_{tag}_{TODAY}.xlsx"
-    write_tsv(mat, root / f"matrix_{tag}.tsv")          # input of step 04 (curation)
+    out = step_dir(taxon, "out") / f"{taxon}_GenBank_{tag}_{TODAY}.xlsx"
+    write_tsv(mat, step_dir(taxon, "out") / f"matrix_{tag}.tsv")          # input of step 04 (curation)
     out = write_workbook(out, {"Matrix": mat, "Species x gene": sp, "Records": records,
                                "Voucher reconciliation": recon, "Not classified": nc, "QC": qc, "Query": query},
                          freeze={"Matrix": "C2", "Records": "C2"},
@@ -158,11 +159,12 @@ def main(argv):
     p.add_argument("taxon")
     p.add_argument("--tag", default="")
     a, _ = p.parse_known_args(argv)
-    root = data_dir(a.taxon, "genbank") / "g2t"
+    root = step_dir(a.taxon, "g2t")
     tags = [a.tag] if a.tag else sorted(d.name for d in root.iterdir() if d.is_dir())
     lines = []
     for t in tags:
         lines += export(a.taxon, t)
+    write_readme(a.taxon)
     summary("03_export", lines)
     return 0
 

@@ -93,3 +93,20 @@
 | P2 | synonymy 模块：由 names + sources 生成规范异名录（Name Author, year: page, fig.） |
 | P3 | maps 模块：模式产地图（按 MEOW realm 着色）、标本分布图 |
 | P4 | 向 WoRMS 编辑报告 QC 发现的数据错误（人工） |
+
+## 8. 2026-10-31 新增（Ophelia 新种稿件核对中发现）
+
+| # | 需求 | 实现 | 状态 |
+|---|---|---|---|
+| R1 | **缓存会过期**：WoRMS 记录更新后（*O. peresi* 2026-10-16 由 1965 改为 1966），流程仍用旧缓存，名称表 1965、原始文献 1966 前后矛盾。提供 `--refresh` 强制重新联网 | lib/worms.client + 01 checklist `--refresh`；`yzz.py worms all <Taxon> --refresh` | ✅ |
+| R2 | QC `AUTH_OD_YEAR`：命名人年份 ≠ 原始文献年份（缓存过期或 WoRMS 内部不一致） | 15_qc | ✅ |
+| R3 | QC `TL_FROM_TITLE`：模式产地文字出现在原始文献题目里，可能是按题目概括的（*O. profunda* "off New England" 来自 Hartman 1965 题目 "…off New England to Bermuda…"，原文为 Bermuda） | 15_qc | ✅ |
+| R4 | 原始组合在目标类群外（如 *Pseudophelia translucens*）时，其模式产地也要取（11 原始文献已回退，12 模式产地未回退，*O. translucens* 留空） | 04 额外抓原始组合页 + 12 回退 | ✅ |
+| R5 | WoRMS 把原始文献挂错（*O. denticulata* 挂 Verrill 1875 的 9(54)，该文无 Ophelia；真正在 10(55)）——仅凭 WoRMS 数据无法发现，需 literature 模块用 PDF 全文核对"原始文献中是否出现该种名" | literature 模块 | ⏳ |
+| R6 | 模式产地只有大洋级（"Atlantic Ocean"）时，大洋中心点坐标（如 0.7°S, 29.6°W）误导性大 → QC `TL_OCEAN_ONLY` 提示须查原文 | 15_qc | ✅ |
+| R7 | 重描述是否基于模式标本：WoRMS 网页 Sources 区的 "note: redescription from holotype" 等 REST 不返回，原只取 page 字段，丢失（用户 2026-11-08 发现：*M. orientalis* 329257 / Liu et al. 2018；*M. aegypti* 1306160 / Martin et al. 2020） | 04 解析缓存网页 → `source_notes.tsv`；11、16 合并；回归 `tests/check_source_notes.py` | ✅ 2026-11-08 |
+| R8 | 分类修订第一步要“每个种的全部描述文献”（Travisia 式，L3/L2/L4），名录、记录等其他用途另列（用户 2026-11-08） | 16_species_literature | ✅ 2026-11-08 |
+| R9 | 非有效名的现行有效名在子树外（*Marphysa bellii* → *Paucibranchia bellii*），挂在有效名上的重描述（Molina-Acevedo 2018，lectotype）原来漏取；01 子树也漏个别曾归本属的名称（*M. belli oculata*） | 16 取子树外有效名文献 + AphiaRecordsByName 补名称 | ✅ 2026-11-08 |
+| R10 | AphiaRecordsByName 每页 45–50 条不定，不能以“不足 50 条”判末页 | 16 翻页至空 | ✅ |
+| R11 | `worms all <Taxon> --refresh` 在 20 步报 unrecognized arguments | 20 用 parse_known_args | ✅ |
+| R12 | WoRMS 只含编辑挂上的文献：漏标的重描述、带描述的记录、中文文献需 literature 模块逐种全文检索补齐 | literature 模块 | ⏳ |

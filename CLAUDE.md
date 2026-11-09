@@ -8,6 +8,10 @@
 
 - **改完任何脚本必须跑该模块回归测试**（如 `modules/worms/tests/check_polynoidae.py`），全部 PASS 才能向用户报告完成；用户指出的每个错误都要加成一条检查。汇报时不得把未验证的结果说成已完成。
 
+## 中文文档
+- 生成任何含中文的 Word/PDF/txt：按 skill `yzz-zh`；交付前 `python3 yzz.py zh check <文件>` 必须 OK。禁用全角空格。新乱码问题 → 改 `lib/zh_office.py` + `tests/test_zh_office.py` 加检查。
+- 学名译中文：先查 `python3 yzz.py literature 11 polychaeta lookup <拉丁名或中文名>`（刘瑞玉 2008《中国海洋生物名录》全门类 3.2 万名称 + 3845 异名，库 `cache/cn_names.sqlite`）。查不到 → 保留拉丁名，不自行意译（用户 2026-10-21：Claude 意译学名错误严重）。名录与用户论文用法不同时两者都写并注明（如 *Ophelia*：名录"海蛹属"，用户论文"粘海蛹属"）。
+
 ## 数据原则
 - 分类事实只来自数据库原值或文献原文；**缺失留空，不猜**。
 - UNKNOWN ≠ ABSENT。

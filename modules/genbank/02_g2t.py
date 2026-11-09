@@ -12,7 +12,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-from common import data_dir, summary
+from common import summary
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gbpaths import step_dir, write_readme  # noqa: E402
 
 try:
     import g2t
@@ -28,25 +30,25 @@ def main(argv):
                    help="凭证号核对合并所需证据强度 (high = 只按同一论文/日期/坐标合并)")
     p.add_argument("--no-reconcile", action="store_true")
     a, _ = p.parse_known_args(argv)
-    root = data_dir(a.taxon, "genbank")
-    tags = [a.tag] if a.tag else sorted(d.name for d in (root / "gb").iterdir() if d.is_dir() and any(d.glob("*.gb")))
+    tags = [a.tag] if a.tag else sorted(d.name for d in step_dir(a.taxon, "gb").iterdir() if d.is_dir() and any(d.glob("*.gb")))
     if not tags:
         raise SystemExit("没有已下载的 .gb: 先运行 genbank 01")
     lines = []
     for tag in tags:
-        out = root / "g2t" / tag
+        out = step_dir(a.taxon, "g2t", tag)
         out.mkdir(parents=True, exist_ok=True)
         log = io.StringIO()
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             import logging
             logging.disable(logging.INFO)
-            r = g2t.run(input_files=[str(root / "gb" / tag)], output_dir=str(out), stream=True,
+            r = g2t.run(input_files=[str(step_dir(a.taxon, "gb", tag))], output_dir=str(out), stream=True,
                         skip_reconcile=a.no_reconcile, reconcile_min_confidence=a.min_confidence)
             logging.disable(logging.NOTSET)
         (out / "g2t_log.txt").write_text(log.getvalue() + "\n" + "\n".join(r.log), encoding="utf-8")
         ok = Path(r.final_output or "").exists()
         lines.append(f"{tag}: {'OK' if ok else 'FAILED'} — " + "; ".join(x.split(":")[0] + x[x.rfind("("):] for x in r.log))
-    summary("02_g2t", lines + [f"输出: {root / 'g2t'}"])
+    write_readme(a.taxon)
+    summary("02_g2t", lines + [f"输出: {step_dir(a.taxon, 'g2t')}"])
     return 0
 
 

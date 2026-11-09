@@ -1,5 +1,6 @@
 """Excel 报表统一格式: 粗体表头、冻结首行、筛选、列宽; 可按规则给整行着色."""
 from openpyxl import load_workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Font, PatternFill
 import pandas as pd
 
@@ -21,6 +22,9 @@ def write_workbook(path, sheets, freeze=None, shade=None):
     with pd.ExcelWriter(path, engine="openpyxl") as w:
         for name, df in sheets.items():
             if df is not None and len(df.columns):
+                # OCR 文本中的控制字符 Excel 不收 (IllegalCharacterError, 2026-11-09 Kara 2023 原文度号)
+                df = df.apply(lambda col: col.str.replace(ILLEGAL_CHARACTERS_RE, "", regex=True) if col.dtype == object
+                              and col.map(lambda v: isinstance(v, str)).any() else col)
                 df.to_excel(w, sheet_name=name[:31], index=False)
     wb = load_workbook(path)
     for ws in wb.worksheets:

@@ -13,13 +13,16 @@ python3 yzz.py worms 06 <Taxon>           # 只跑某一步；07-09 跑一段
 
 在 Claude Code 里直接说"整理 Polynoidae 的 WoRMS 数据"即可（skill `yzz-worms`）；"下载 Priapulidae 的 GenBank 并整理多基因表"（skill `yzz-genbank`）；"盘点 Annelida 在 SRA 的浅层/转录组/全基因组数据"（skill `yzz-sra`）。
 
+中文文档防乱码：`python3 yzz.py zh check|fix <docx/pdf/txt...>`（skill `yzz-zh`；生成任何中文 Word/PDF 时自动调用）。
+
 ## 结构
 
 ```
 yzz-分类工作流/
 ├── yzz.py              统一入口
 ├── CLAUDE.md           团队规则（Claude 必读）
-├── lib/                共享代码：common.py（路径/TSV/清洗）、worms.py（WoRMS 访问+页面解析）、excel.py（报表格式）
+├── lib/                共享代码：common.py（路径/TSV/清洗）、worms.py（WoRMS 访问+页面解析）、excel.py（报表格式）、zh_office.py（中文 Word/PDF/txt 防乱码）
+├── tests/              跨模块测试（test_zh_office.py）
 ├── modules/            一个科研任务一个模块；一个步骤一个脚本（NN_name.py），每个模块有 README + REQUIREMENTS
 │   ├── worms/          ✅ 名称、文献、模式产地、标本（01–09）
 │   ├── literature/     ⏳ 文献下载、全文抽取
@@ -65,11 +68,10 @@ literature 模块   从文献整理物种信息（模式产地、描述、性状
 git clone https://github.com/deyuanyang92-dev/yzz_taxonomy_workflow.git
 cd yzz_taxonomy_workflow
 git clone https://github.com/deyuanyang92-dev/gb2taxonomy.git vendor/gb2taxonomy
+git clone https://github.com/deyuanyang92-dev/Mitom.git temp_scripts/Mitoz-annotate   # genbank 05 用 MitoM（mitom run）
 pip install -e vendor/gb2taxonomy
 cp config/ncbi.example.json config/ncbi.json   # 可选：填 NCBI 邮箱 / API key（已被 .gitignore 忽略）
 python3 yzz.py worms all <Taxon>
-git clone https://github.com/deyuanyang92-dev/Mitom.git temp_scripts/Mitoz-annotate   # genbank 05 用 MitoM（mitom run）
-git clone https://github.com/deyuanyang92-dev/Temp_scripts.git temp_scripts   # genbank 05 用 Mitoz-annotate/batch_mitoz.py
 ```
 
 `cache/`、`projects/`、`outputs/`、`archive/` 为运行产物与历史数据，不入库；`temp_scripts/` 见 GitHub `deyuanyang92-dev/Temp_scripts`。

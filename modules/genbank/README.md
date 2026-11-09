@@ -21,7 +21,7 @@ python3 yzz.py genbank 05 Perinereis --conda_env_mitoz mitoz3.6   # 线粒体记
 | 03_export | g2t/<tag> → `04_处理数据/genbank/<Taxon>_GenBank_<tag>_<date>.xlsx`；`02_原始数据/genbank/fasta/<tag>/<gene>.fasta` | 只读 g2t 结果；导出 Matrix / Species x gene / Records / Voucher reconciliation / Not classified / QC / Query |
 
 | 04_curate | Excel A（`matrix_<tag>.tsv`）+ 你自己的 Excel B（放 `02_原始数据/genbank/curation/` 或 `--table`）→ Excel C `04_处理数据/genbank/<Taxon>_GenBank_<tag>_curated_<B名>_<date>.xlsx` | g2t.curate：B 列名随意（中英文），自动识别标本号/登录号/拉丁名/纬度+经度/采集日期/题目等，`--map "列名=字段"` 强制；其余列加为 `user:<列名>`；工作表 Matrix（修改标黄）/ Changes / Problems / Column mapping / Matrix (GenBank)；也支持 g2t 预填模板（未修改则跳过） |
-| 05_mitoz | `gb/mito*/*.gb` → `02_原始数据/genbank/mitoz/<tag>/`（`04.final_gb/*.gbf`、`all.final.gbf`、`annotation-summary.tsv`） | 调用 `temp_scripts/Mitoz-annotate/batch_mitoz.py run`，把下载的线粒体记录**全部用 MitoZ 重新注释**，统一 NCBI 注释不一致/缺失；cox1 打头，原 NCBI 头部元数据与 `/organism=` 恢复；完全相同序列去重（`dedup_report.tsv`）。内部 ID 中间文件（`00.*`/`01.*`/`03.*`、`id_map.tsv`）跑完即删，问题样本的 MitoZ 日志留 `failed_logs/`（`--keep_intermediate yes` 保留）。其余参数原样传给 batch_mitoz.py（`--clade`、`--genetic_code`、`--threads`…）。MitoZ 位置：`--conda_env_mitoz` / `--mitoz_path` 或 `config/mitoz.json`；找不到则跳过。**MitoZ 缺陷：不注释 intron** → 注释后自动由 `mito_intron.py`（MFannot 方法的 Python 移植）补 intron，需 exonerate/cmsearch（`--intron_bin` 或 `config/mitoz.json` 的 `intron_bin`），结果 `intron_report.tsv`，需人工核对 |
+| 05_mitoz | `gb/mito*/*.gb` → `02_原始数据/genbank/mitom/<tag>/`（`04.final_gb/*.gbf`、`all.final.gbf`、`annotation-summary.tsv`） | 调用 `temp_scripts/Mitoz-annotate/batch_mitoz.py run`，把下载的线粒体记录**全部用 MitoZ 重新注释**，统一 NCBI 注释不一致/缺失；cox1 打头，原 NCBI 头部元数据与 `/organism=` 恢复；完全相同序列去重（`dedup_report.tsv`）。内部 ID 中间文件（`00.*`/`01.*`/`03.*`、`id_map.tsv`）跑完即删，问题样本的 MitoZ 日志留 `failed_logs/`（`--keep_intermediate yes` 保留）。其余参数原样传给 batch_mitoz.py（`--clade`、`--genetic_code`、`--threads`…）。MitoZ 位置：`--conda_env_mitoz` / `--mitoz_path` 或 `config/mitoz.json`；找不到则跳过。**MitoZ 缺陷：不注释 intron** → 注释后自动由 `mito_intron.py`（MFannot 方法的 Python 移植）补 intron，需 exonerate/cmsearch（`--intron_bin` 或 `config/mitoz.json` 的 `intron_bin`），结果 `intron_report.tsv`，需人工核对 |
 
 **统一凭证号**：Matrix 中 `voucher_as_submitted` = GenBank 原样（全部写法），`voucher_standardized` = 统一后的唯一凭证号（去 COI_/28S_ 等前缀、`:`/空格 → `_`、取最完整写法），`voucher_note` 非空时需人工核对。
 
@@ -34,3 +34,15 @@ python3 yzz.py genbank 05 Perinereis --conda_env_mitoz mitoz3.6   # 线粒体记
 **NCBI 身份**（可选）：`config/ncbi.json`（参照 `config/ncbi.example.json`）或环境变量 `NCBI_EMAIL` / `NCBI_API_KEY`。有 api_key 时 10 次/秒。
 
 **g2t 已知行为**：<150 bp 等未归入 13 类标记基因的记录被静默丢弃 → 03 的 Not classified 表补齐列出；g2t 有未匹配序列时可能返回非零退出码（见 vendor/gb2taxonomy/BUGS.md）。新增基因类型：编辑 `vendor/gb2taxonomy/src/g2t/data/gene_dict.yaml`（g2t 分类用）与 `vendor/gb2taxonomy/src/g2t/ncbi_genes.py`（下载检索用）。改 g2t 后跑 `python3 -m pytest -q`（vendor/gb2taxonomy 下）并推送 GitHub。
+
+## 输出目录（2026-11-08 起：按软件分目录，gb2taxonomy 内按步骤编号；软件原始输出原样保留，中文只写在 README.txt 说明里）
+```
+<genbank>/<Taxon>/  README.txt
+  gb2taxonomy/
+    01_download/<tag>/   g2t-download: NCBI .gb + manifest.json   (01)
+    02_g2t/<tag>/        g2t native output                         (02)
+    03_results/          Excel, fasta/<tag>/, matrix_<tag>.tsv      (03, 由 g2t 输出导出)
+    04_curation/         g2t-curate 模板 / 用户表 B + 校正后 Excel C (04)
+  mitom/<tag>/           MitoM native output                        (05)
+```
+定义在 `gbpaths.py`。

@@ -1,0 +1,16 @@
+{
+  "_doc": "Taxon-name typography rules shared by taxname.py (Python) and molheat.R. Genus and lower ranks italic; ranks above genus, qualifiers, informal codes, authors and non-taxon words upright (ICZN/ICN convention). Edit here, both plotters follow.",
+  "upright_tokens": ["sp.", "spp.", "sp", "spp", "cf.", "cf", "aff.", "aff", "nr.", "near", "var.", "subsp.", "ssp.", "f.", "forma",
+                     "und.", "indet.", "gen.", "n.", "nov.", "sp.nov.", "s.l.", "s.str.", "s.s.", "sensu", "lato", "stricto",
+                     "complex", "group", "agg.", "?", "x", "×", "and", "&", "et", "al.",
+                     "environmental", "sample", "uncultured", "unidentified", "unclassified", "metagenome",
+                     "clone", "isolate", "voucher", "strain", "lineage", "clade", "morphotype", "type"],
+  "rest_upright_after": ["sp.", "spp.", "sp", "spp", "gen.", "indet.", "und.", "clone", "isolate", "voucher", "strain",
+                         "environmental", "uncultured", "unidentified", "unclassified", "metagenome", "lineage", "clade",
+                         "complex", "group", "morphotype"],
+  "higher_rank_suffixes": ["idae", "inae", "oidea", "aceae", "ales", "phyceae", "mycetes"],
+  "higher_taxa": ["Annelida", "Polychaeta", "Clitellata", "Errantia", "Sedentaria", "Eunicida", "Phyllodocida", "Terebellida",
+                  "Sabellida", "Spionida", "Amphinomida", "Metazoa", "Bilateria", "Lophotrochozoa", "Spiralia", "Protostomia",
+                  "Eukaryota", "Mollusca", "Arthropoda", "Nemertea", "Platyhelminthes", "Cnidaria", "Porifera", "Echinodermata"],
+  "upright_regex": ["\\d", "^[A-Z]{2,}", ":", "_"]
+}

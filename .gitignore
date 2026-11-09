@@ -11,6 +11,7 @@ temp_scripts/
 # local credentials
 config/ncbi.json
 config/mitoz.json
+config/projects.json
 
 # python / tooling
 __pycache__/
@@ -19,3 +20,13 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+
+# API keys
+config/openalex.json
+config/literature.json
+config/bhl.json
+
+# third-party / private
+vendor/
+yzz-项目申请/
+Rplots.pdf

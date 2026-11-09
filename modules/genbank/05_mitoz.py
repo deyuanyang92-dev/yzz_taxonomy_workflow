@@ -25,7 +25,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-from common import ROOT, data_dir, summary
+from common import ROOT, summary
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gbpaths import step_dir, write_readme  # noqa: E402
 
 SCRIPT = ROOT / "temp_scripts" / "Mitoz-annotate" / "batch_mitoz.py"
 CONFIG = ROOT / "config" / "mitoz.json"
@@ -88,8 +90,7 @@ def main(argv):
     p.add_argument("--conda_env_mitoz", default="")
     p.add_argument("--mitoz_path", default="")
     a, rest = p.parse_known_args(argv)
-    root = data_dir(a.taxon, "genbank")
-    gb_root = root / "gb"
+    gb_root = step_dir(a.taxon, "gb")
     tags = [a.tag] if a.tag else sorted(
         d.name for d in gb_root.iterdir() if d.is_dir() and d.name.startswith("mito") and any(d.glob("*.gb"))) \
         if gb_root.exists() else []
@@ -108,7 +109,7 @@ def main(argv):
         rest += ["--intron_bin", cfg["intron_bin"]]
     lines = []
     for tag in tags:
-        out = root / "mitoz" / tag
+        out = step_dir(a.taxon, "mitom", tag)   # MitoM 的 -o 输出目录, 内部结构原样保留
         cmd = [sys.executable, str(SCRIPT), "run", "-i", str(gb_root / tag), "-o", str(out), *loc, *rest]
         rc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         # MitoM 新版输出 (2026-11): summary.tsv (protein_genes/tRNAs/rRNAs/ncbi_errors), final_annotation/, reports/;
@@ -131,7 +132,8 @@ def main(argv):
         lines.append(f"{tag}: {'OK' if rc == 0 else f'FAILED (exit {rc}, 见 pipeline.log)'} — 注释完成 {len(rows)} 条; "
                      f"基因不全 (PCG<13/tRNA<22/rRNA<2) {short}; {'NCBI table2asn 有错误' if new else '问题样本'} {n_prob}; "
                      f"原记录含 intron {n_intron_records(gb_root / tag)} 条; {fix}")
-    summary("05_mitoz", lines + [f"输出: {root / 'mitoz'}/<tag>/final_annotation/*.gb, final_annotation_all.gb, summary.tsv, "
+    write_readme(a.taxon)
+    summary("05_mitoz", lines + [f"输出: {step_dir(a.taxon, 'mitom')}/<tag>/final_annotation/*.gb, final_annotation_all.gb, summary.tsv, "
                                  "original_vs_mitom.tsv, ncbi_submission/, reports/intron_report.tsv (README.txt 有说明)"])
     return 0
 

@@ -5,6 +5,13 @@
   ROOT/projects/<Taxon>/02_原始数据/<module>/  模块抓取/计算得到的 TSV (数据本体, 机器读写)
   ROOT/projects/<Taxon>/04_处理数据/<module>/  Excel 报表 (给人看的视图)
   ROOT/cache/                              跨项目共享缓存 (HTTP、地名标准化等)
+
+外部项目 (用户自己的项目文件夹, 如 P:\岩虫属系统修订): 类群登记在 config/projects.json
+({"Marphysa": "/mnt/p/岩虫属系统修订", ...}; python3 yzz.py project <Taxon> <目录> 登记),
+或临时用 --project <目录> / 环境变量 YZZ_PROJECT_DIR. 登记后直接输出到该文件夹, 不写 ROOT/projects:
+  <目录>/02_原始数据/<module>/<Taxon>/   数据 TSV        <目录>/04_处理数据/<module>/<Taxon>/  Excel 报表
+  分子模块 (genbank, sra, molheat, phylogeny): 数据和报表都在 <目录>/10_分子数据/<module>/<Taxon>/
+  maps 等用 project(taxon) 的模块: <目录>/05_图表/...
 """
 import datetime
 import re
@@ -19,8 +26,40 @@ PROJECT_TEMPLATE = ["01_文献", "02_原始数据", "03_脚本", "04_处理数�
                     "07_审稿记录", "08_知识库", "09_文本抽取", "10_分子数据"]
 
 
+MOLECULAR = {"genbank", "sra", "molheat", "phylogeny"}
+REGISTRY = ROOT / "config" / "projects.json"
+
+
+def external_project(taxon):
+    """用户项目文件夹 (Path) 或 None: --project / YZZ_PROJECT_DIR 优先, 其次 config/projects.json."""
+    import json
+    import os
+    env = os.environ.get("YZZ_PROJECT_DIR")
+    if env:
+        return Path(env)
+    if REGISTRY.exists():
+        d = json.loads(REGISTRY.read_text(encoding="utf-8")).get(taxon)
+        if d:
+            return Path(d)
+    return None
+
+
+def register_project(taxon, directory):
+    import json
+    reg = json.loads(REGISTRY.read_text(encoding="utf-8")) if REGISTRY.exists() else {}
+    reg[taxon] = str(Path(directory).resolve())
+    REGISTRY.parent.mkdir(exist_ok=True)
+    REGISTRY.write_text(json.dumps(reg, ensure_ascii=False, indent=1), encoding="utf-8")
+    return reg[taxon]
+
+
 def project(taxon):
-    """返回项目目录, 不存在则按模板创建."""
+    """返回项目目录: 已登记的外部项目文件夹, 否则 ROOT/projects/<Taxon> (不存在则按模板创建)."""
+    ext = external_project(taxon)
+    if ext is not None:
+        ext.mkdir(parents=True, exist_ok=True)
+        CACHE.mkdir(exist_ok=True)
+        return ext
     p = PROJECTS / taxon
     if not p.exists():
         for d in PROJECT_TEMPLATE:
@@ -37,22 +76,40 @@ def project(taxon):
     return p
 
 
-def data_dir(taxon, module):
-    d = project(taxon) / "02_原始数据" / module
+def _module_dir(taxon, module, area):
+    if external_project(taxon) is not None:
+        d = project(taxon) / ("10_分子数据" if module in MOLECULAR else area) / module / taxon
+    else:
+        d = project(taxon) / area / module
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def worms_root(taxon):
+    """oworms 输出根目录 <项目>/02_原始数据/worms/<Taxon> (oworms 原生结构: data/*.tsv, reports/*.xlsx, 不改动).
+    2026-11-09 起 yzz 的 WoRMS 部分由 oworms (github.com/deyuanyang92-dev/oworms) 完成, yzz 只调用."""
+    d = project(taxon) / "02_原始数据" / "worms" / taxon
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def data_dir(taxon, module):
+    if module == "worms":
+        return worms_root(taxon) / "data"
+    return _module_dir(taxon, module, "02_原始数据")
 
 
 def report_dir(taxon, module):
-    d = project(taxon) / "04_处理数据" / module
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    if module == "worms":
+        return worms_root(taxon) / "reports"
+    return _module_dir(taxon, module, "04_处理数据")
 
 
 def read_tsv(path, required=True):
     import pandas as pd  # 延迟导入: sra 等纯标准库模块只用本文件的路径工具
     path = Path(path)
-    if not path.exists():
+    # 空文件(如 06_specimens 在类群无标本时写出的空 TSV)与缺失同等处理, 否则 pandas 抛 EmptyDataError
+    if not path.exists() or not path.read_text(encoding="utf-8", errors="ignore").strip():
         if required:
             raise SystemExit(f"缺少输入 {path.name}: 请先运行生成它的步骤")
         return pd.DataFrame()
